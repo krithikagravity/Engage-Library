@@ -1,0 +1,20 @@
+{
+  "name": "vary-3d-scroll-based-website",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "eases-jsnext": "^1.0.10",
+    "puppeteer": "^24.42.0",
+    "stats-gl": "^4.0.2",
+    "three": "^0.183.2"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}
