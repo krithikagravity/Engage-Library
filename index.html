@@ -22,6 +22,7 @@
       --accent2: #a5d8ff;
       --accent3: #ffc87a;
       --accent4: #c9a5ff;
+      --accent5: #50e3c2;
     }
 
     html {
@@ -47,6 +48,7 @@
       text-align: center;
       position: relative;
       scroll-snap-align: start;
+      scroll-snap-stop: always;
       pointer-events: none;
     }
 
@@ -133,6 +135,7 @@
       text-align: center;
       padding: 6rem 0;
       scroll-snap-align: start;
+      scroll-snap-stop: always;
       pointer-events: none;
     }
 
@@ -155,6 +158,7 @@
     .section:nth-child(2) .badge { background: var(--accent2); color: var(--dark); }
     .section:nth-child(3) .badge { background: var(--accent3); color: var(--dark); }
     .section:nth-child(4) .badge { background: var(--accent4); }
+    .section:nth-child(5) .badge { background: var(--accent5); color: var(--dark); }
 
     .section .badge .icon {
       font-size: 1.1em;
@@ -188,6 +192,7 @@
     .section:nth-child(2) .divider { background: var(--accent2); }
     .section:nth-child(3) .divider { background: var(--accent3); }
     .section:nth-child(4) .divider { background: var(--accent4); }
+    .section:nth-child(5) .divider { background: var(--accent5); }
 
     /* ── Custom Interactive Elements ── */
     .compat-note {
@@ -362,6 +367,7 @@
       text-align: center;
       padding: 4rem 2rem;
       scroll-snap-align: start;
+      scroll-snap-stop: always;
       pointer-events: none;
     }
 
@@ -677,7 +683,7 @@
   <!-- Splash -->
   <section class="splash" id="section-splash">
     <div class="splash-text-overlay"></div>
-    <p class="overline">✦ Gravity Engage Library ✦</p>
+    <p class="overline">Gravity Engage Library</p>
     <h1>Welcome to the<span>Gravity Engage Library</span></h1>
     <p class="subtitle">Explore our in-house experiments, products we've built and tools we love</p>
     <button class="scroll-hint" onclick="handleExploreClick()">Explore</button>
@@ -762,12 +768,12 @@
     </div>
     <div class="section" id="section-copilot">
       <div class="badge">Plugin</div>
-      <h2>Figma<br>Copilot</h2>
+      <h2>Figma Copilot</h2>
       <div class="divider"></div>
       <p>Your AI assistant integrated straight into Figma to streamline your workflow.</p>
       
       <div class="download-container">
-        <a class="download-btn" href="#" download style="background: var(--accent1); color: var(--dark);">
+        <a class="download-btn" href="/figma_copilot.zip" download="figma_copilot.zip" style="background: var(--accent5); color: var(--dark); box-shadow: 0 4px 15px rgba(80,227,194,0.35);">
           Download
         </a>
       </div>
@@ -788,18 +794,18 @@
     <div class="glass-panel">
       <!-- Card 1 -->
       <div class="fame-card">
-        <span class="card-icon">📊</span>
+        <span class="card-icon"></span>
         <h3>Graphify</h3>
         <p>A powerful data visualization tool for transforming complex datasets into beautiful insights.</p>
-        <a href="#" target="_blank" class="view-btn">View</a>
+        <a href="https://graphify.net/" target="_blank" class="view-btn">View</a>
       </div>
       
       <!-- Card 2 -->
       <div class="fame-card">
-        <span class="card-icon">📖</span>
+        <span class="card-icon"></span>
         <h3>Flipbook</h3>
         <p>Convert your static designs into interactive digital flipbooks with seamless transitions.</p>
-        <a href="#" target="_blank" class="view-btn">View</a>
+        <a href="https://flipbook.page/" target="_blank" class="view-btn">View</a>
       </div>
     </div>
 
@@ -903,6 +909,31 @@
       <h3 class="popup-title">How It Works</h3>
       <div class="popup-body">
         <p>This skill bridges the gap between text prompts and high-end visual design, generating structured slides with theme-aware layouts and assets.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Island 5 -->
+  <div class="popup-overlay" id="popup-install-5" onclick="handleOverlayClick(event, 'popup-install-5')">
+    <div class="popup-card">
+      <button class="popup-close" onclick="closePopup('popup-install-5')">✕</button>
+      <h3 class="popup-title">Installation Instructions</h3>
+      <div class="popup-body">
+        <ol>
+          <li>Open Figma desktop app.</li>
+          <li>Go to Menu &rarr; Plugins &rarr; Development &rarr; Import plugin from manifest.</li>
+          <li>Select the <code>manifest.json</code> file from the extracted folder.</li>
+          <li>Access it under Plugins &rarr; Development &rarr; Figma Copilot.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+  <div class="popup-overlay" id="popup-howitworks-5" onclick="handleOverlayClick(event, 'popup-howitworks-5')">
+    <div class="popup-card">
+      <button class="popup-close" onclick="closePopup('popup-howitworks-5')">✕</button>
+      <h3 class="popup-title">How It Works</h3>
+      <div class="popup-body">
+        <p>A persistent AI sidebar for Figma that knows what layer you have selected at all times, reads your design system, and executes actions directly on the canvas.</p>
       </div>
     </div>
   </div>
