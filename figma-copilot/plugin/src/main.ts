@@ -309,29 +309,45 @@ figma.ui.onmessage = async (msg) => {
       applyAutoLayout(selection[0]);
       figma.notify('✅ Auto layout applied!');
     } else {
-      const parent = selection[0].parent;
-      if (parent) {
-        const group = figma.group(selection, parent);
+      try {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const node of selection) {
+          const box = (node as any).absoluteBoundingBox;
+          if (box) {
+            minX = Math.min(minX, box.x);
+            minY = Math.min(minY, box.y);
+            maxX = Math.max(maxX, box.x + box.width);
+            maxY = Math.max(maxY, box.y + box.height);
+          }
+        }
+        
+        if (minX === Infinity) {
+          figma.notify('⚠️ Could not determine bounds of selection', { error: true });
+          return;
+        }
+
         const frame = figma.createFrame();
-        frame.x = group.x;
-        frame.y = group.y;
-        frame.resize(group.width, group.height);
+        frame.x = minX;
+        frame.y = minY;
+        frame.resize(maxX - minX, maxY - minY);
         frame.name = "Auto Layout Frame";
         frame.fills = [];
         frame.clipsContent = false;
+        
+        const parent = selection[0].parent || figma.currentPage;
         parent.appendChild(frame);
+        
         for (const node of selection) {
-          const oldX = node.x;
-          const oldY = node.y;
+          // Figma automatically preserves absolute position when appending!
           frame.appendChild(node);
-          node.x = oldX - frame.x;
-          node.y = oldY - frame.y;
         }
-        group.remove();
         
         applyAutoLayout(frame);
         figma.currentPage.selection = [frame];
         figma.notify('✅ Auto layout applied to selection!');
+      } catch (e: any) {
+        console.error("AutoLayout Error:", e);
+        figma.notify(`⚠️ Failed to apply Auto Layout: ${e.message}`, { error: true });
       }
     }
   } else if (msg.type === "EXPORT_PPTX") {
