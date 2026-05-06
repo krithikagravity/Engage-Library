@@ -166,7 +166,7 @@ function extractTextNodes(frame: FrameNode): any[] {
       const fn = tn.fontName as any;
       nodes.push({
         text: tn.characters,
-        x: bb.x - (frameBB as Rect).x, y: bb.y - (frameBB as Rect).y,
+        x: bb.x - frameBB.x, y: bb.y - frameBB.y,
         width: bb.width, height: bb.height,
         fontSize: typeof tn.fontSize==='number' ? tn.fontSize : 16,
         fontFamily: fn?.family||'Arial',
@@ -363,104 +363,141 @@ function isIcon(node: any) {
 }
 
 function applyAutoLayout(node: any, depth = 0) {
-  if (depth > 30) { console.log('AutoLayout: Depth limit reached'); return; }
-  if (!('children' in node)) { console.log('AutoLayout: Node has no children', node.name); return; }
-  if (node.type === 'GROUP') { console.log('AutoLayout: Skipping Group node', node.name); return; }
+  if (depth > 30) return;
+  if (!('children' in node)) return;
+  if (node.type === 'GROUP') return;
+  if (isIcon(node)) return;
 
   // Recurse children first (bottom up)
   for (const child of node.children) {
     applyAutoLayout(child, depth + 1);
   }
 
-  const f = node as FrameNode;
-  if (!('inferredAutoLayout' in f)) {
-    console.log('AutoLayout: inferredAutoLayout API not available on', node.name);
-    return;
+  const children = [...node.children];
+  if (children.length < 2) return;
+
+  // Skip if any child is absolutely positioned way outside
+  const validChildren = children.filter((c: any) => 
+    c.x >= -10 && c.y >= -10 &&
+    c.x < node.width + 10 &&
+    c.y < node.height + 10
+  );
+  if (validChildren.length < 2) return;
+
+  // 1. OVERLAP DETECTION
+  for (let i = 0; i < validChildren.length; i++) {
+    for (let j = i + 1; j < validChildren.length; j++) {
+      const a = validChildren[i];
+      const b = validChildren[j];
+      const overlapX = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
+      const overlapY = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+      const overlapArea = overlapX * overlapY;
+      if (overlapArea > 0) {
+        const smallerArea = Math.min(a.width * a.height, b.width * b.height);
+        if (smallerArea > 0 && overlapArea / smallerArea > 0.20) return;
+      }
+    }
   }
 
-  const inferred = f.inferredAutoLayout;
-  if (inferred) {
-    try {
-      if (inferred.layoutMode) f.layoutMode = inferred.layoutMode;
-      if (inferred.layoutWrap !== undefined) f.layoutWrap = inferred.layoutWrap;
-      if (inferred.primaryAxisAlignItems !== undefined) f.primaryAxisAlignItems = inferred.primaryAxisAlignItems;
-      if (inferred.counterAxisAlignItems !== undefined) f.counterAxisAlignItems = inferred.counterAxisAlignItems;
-      if (inferred.primaryAxisSizingMode !== undefined) f.primaryAxisSizingMode = inferred.primaryAxisSizingMode;
-      if (inferred.counterAxisSizingMode !== undefined) f.counterAxisSizingMode = inferred.counterAxisSizingMode;
-      if (inferred.itemSpacing !== undefined) f.itemSpacing = inferred.itemSpacing;
-      if (inferred.counterAxisSpacing !== undefined) f.counterAxisSpacing = inferred.counterAxisSpacing;
-      if (inferred.paddingLeft !== undefined) f.paddingLeft = inferred.paddingLeft;
-      if (inferred.paddingRight !== undefined) f.paddingRight = inferred.paddingRight;
-      if (inferred.paddingTop !== undefined) f.paddingTop = inferred.paddingTop;
-      if (inferred.paddingBottom !== undefined) f.paddingBottom = inferred.paddingBottom;
-      if (inferred.itemReverseZIndex !== undefined) f.itemReverseZIndex = inferred.itemReverseZIndex;
-      if (inferred.strokesIncludedInLayout !== undefined) f.strokesIncludedInLayout = inferred.strokesIncludedInLayout;
-      
-      console.log('AutoLayout: Success! Native inference applied to', node.name, 'Mode:', inferred.layoutMode);
-    } catch (e: any) {
-      console.warn('AutoLayout: Error applying native inference to', node.name, e.message);
-    }
+  // 2. GRID DETECTION
+  const uniqueY: number[] = [];
+  const uniqueX: number[] = [];
+  for (const c of validChildren) {
+    if (!uniqueY.some(y => Math.abs(y - c.y) < 5)) uniqueY.push(c.y);
+    if (!uniqueX.some(x => Math.abs(x - c.x) < 5)) uniqueX.push(c.x);
+  }
+  if (uniqueY.length >= 2 && uniqueX.length >= 2) return;
+
+  // Detect direction
+  const yValues = validChildren.map((c: any) => c.y);
+  const xValues = validChildren.map((c: any) => c.x);
+  const ySpread = Math.max(...yValues) - Math.min(...yValues);
+  const xSpread = Math.max(...xValues) - Math.min(...xValues);
+  const direction = xSpread > ySpread ? 'HORIZONTAL' : 'VERTICAL';
+
+  // 3. ALIGNMENT DETECTION
+  let counterAxisAlignItems = 'MIN';
+  if (direction === 'HORIZONTAL') {
+    const centers = validChildren.map((c: any) => c.y + c.height / 2);
+    const ends = validChildren.map((c: any) => c.y + c.height);
+    const varCenters = Math.max(...centers) - Math.min(...centers);
+    const varEnds = Math.max(...ends) - Math.min(...ends);
+    const varMins = Math.max(...yValues) - Math.min(...yValues);
+    if (varCenters < 5 && varCenters < varMins) counterAxisAlignItems = 'CENTER';
+    else if (varEnds < 5 && varEnds < varMins) counterAxisAlignItems = 'MAX';
   } else {
-    console.log('AutoLayout: Native inference returned null. Using robust fallback for', node.name);
-    
-    try {
-      const children = [...node.children] as SceneNode[];
-      if (children.length < 2) return;
-      
-      // Save original container bounds
-      const w = node.width;
-      const h = node.height;
-      
-      // Detect overlaps and mark smaller items as absolute
-      for (let i = 0; i < children.length; i++) {
-        for (let j = i + 1; j < children.length; j++) {
-          const a = children[i];
-          const b = children[j];
-          const overlapX = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
-          const overlapY = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
-          const overlapArea = overlapX * overlapY;
-          if (overlapArea > 0) {
-             const areaA = a.width * a.height;
-             const areaB = b.width * b.height;
-             const smaller = areaA < areaB ? a : b;
-             if ('layoutPositioning' in smaller) {
-               smaller.layoutPositioning = 'ABSOLUTE';
-             }
-          }
-        }
-      }
-      
-      // Get non-absolute children
-      const validChildren = children.filter(c => !('layoutPositioning' in c) || c.layoutPositioning !== 'ABSOLUTE');
-      
-      if (validChildren.length < 2) {
-        // If everything overlaps, just make it a stacked frame
-        f.layoutMode = 'HORIZONTAL';
-        f.primaryAxisAlignItems = 'CENTER';
-        f.counterAxisAlignItems = 'CENTER';
-        f.resize(w, h);
-        return;
-      }
-      
-      // Detect direction
-      const ySpread = Math.max(...validChildren.map(c => c.y)) - Math.min(...validChildren.map(c => c.y));
-      const xSpread = Math.max(...validChildren.map(c => c.x)) - Math.min(...validChildren.map(c => c.x));
-      const direction = xSpread > ySpread ? 'HORIZONTAL' : 'VERTICAL';
-      
-      f.layoutMode = direction;
-      
-      // If grid-like (both spreads significant), use Wrap
-      if (xSpread > 20 && ySpread > 20) {
-         try { f.layoutWrap = 'WRAP'; } catch(e) {}
-      }
-      
-      f.primaryAxisSizingMode = 'FIXED';
-      f.counterAxisSizingMode = 'FIXED';
-      f.resize(w, h);
-      
-    } catch (e: any) {
-      console.warn('AutoLayout fallback failed:', e.message);
+    const centers = validChildren.map((c: any) => c.x + c.width / 2);
+    const ends = validChildren.map((c: any) => c.x + c.width);
+    const varCenters = Math.max(...centers) - Math.min(...centers);
+    const varEnds = Math.max(...ends) - Math.min(...ends);
+    const varMins = Math.max(...xValues) - Math.min(...xValues);
+    if (varCenters < 5 && varCenters < varMins) counterAxisAlignItems = 'CENTER';
+    else if (varEnds < 5 && varEnds < varMins) counterAxisAlignItems = 'MAX';
+  }
+
+  // Sort children by position
+  const sorted = [...validChildren].sort((a: any, b: any) =>
+    direction === 'HORIZONTAL' ? a.x - b.x : a.y - b.y
+  );
+
+  // 4. CALCULATE GAPS & UNEVEN GAP HANDLING
+  const gaps: number[] = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const curr = sorted[i];
+    const gap = direction === 'HORIZONTAL'
+      ? curr.x - (prev.x + prev.width)
+      : curr.y - (prev.y + prev.height);
+    if (gap >= 0 && gap < 200) gaps.push(gap);
+  }
+  
+  let primaryAxisAlignItems = 'MIN';
+  let itemSpacing = 0;
+  
+  if (gaps.length > 0) {
+    const maxGap = Math.max(...gaps);
+    const minGap = Math.min(...gaps);
+    if (maxGap - minGap > 10) {
+      primaryAxisAlignItems = 'SPACE_BETWEEN';
+    } else {
+      itemSpacing = Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length);
     }
+  }
+
+  // Calculate padding
+  const paddingLeft = Math.max(0, Math.round(Math.min(...xValues)));
+  const paddingTop = Math.max(0, Math.round(Math.min(...yValues)));
+  const paddingRight = Math.max(0, Math.round(
+    node.width - Math.max(...validChildren.map((c: any) => c.x + c.width))
+  ));
+  const paddingBottom = Math.max(0, Math.round(
+    node.height - Math.max(...validChildren.map((c: any) => c.y + c.height))
+  ));
+
+  try {
+    // Save dimensions BEFORE applying auto layout
+    const w = node.width;
+    const h = node.height;
+
+    node.layoutMode = direction;
+    node.itemSpacing = itemSpacing;
+    node.primaryAxisAlignItems = primaryAxisAlignItems;
+    node.counterAxisAlignItems = counterAxisAlignItems;
+    node.paddingLeft = paddingLeft;
+    node.paddingTop = paddingTop;
+    node.paddingRight = paddingRight;
+    node.paddingBottom = paddingBottom;
+
+    // Keep FIXED sizing to preserve original dimensions
+    node.primaryAxisSizingMode = 'FIXED';
+    node.counterAxisSizingMode = 'FIXED';
+
+    // Restore dimensions after auto layout changes them
+    node.resize(w, h);
+
+  } catch (e: any) {
+    console.warn('Skipped:', node.name, e.message);
+    try { node.layoutMode = 'NONE'; } catch (err) {}
   }
 }
 
