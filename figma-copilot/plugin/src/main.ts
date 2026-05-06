@@ -407,7 +407,59 @@ function applyAutoLayout(node: any, depth = 0) {
     if (!uniqueX.some(x => Math.abs(x - c.x) < 5)) uniqueX.push(c.x);
   }
   if (uniqueY.length >= 2 && uniqueX.length >= 2) {
-    console.log('AutoLayout: Grid detected (items on multiple rows/cols), skipping', node.name);
+    console.log('AutoLayout: Grid detected, auto-grouping rows...', node.name);
+    
+    // Sort children by Y, then group into rows based on tolerance
+    const sortedChildren = [...validChildren].sort((a, b) => a.y - b.y);
+    const rows: SceneNode[][] = [];
+    let currentRow: SceneNode[] = [];
+    let currentY = sortedChildren[0].y;
+
+    for (const child of sortedChildren) {
+      if (Math.abs(child.y - currentY) < 15) { // 15px tolerance for same row
+        currentRow.push(child);
+      } else {
+        rows.push(currentRow);
+        currentRow = [child];
+        currentY = child.y;
+      }
+    }
+    if (currentRow.length > 0) rows.push(currentRow);
+
+    // Only proceed if it actually resulted in multiple rows
+    if (rows.length >= 2) {
+      for (const row of rows) {
+        if (row.length < 2) continue; // No need to wrap a single item
+        
+        const rowFrame = figma.createFrame();
+        rowFrame.name = 'Row';
+        rowFrame.fills = []; // Transparent background
+        
+        // Calculate bounding box for the row
+        const minX = Math.min(...row.map(c => c.x));
+        const minY = Math.min(...row.map(c => c.y));
+        const maxX = Math.max(...row.map(c => c.x + c.width));
+        const maxY = Math.max(...row.map(c => c.y + c.height));
+        
+        rowFrame.x = minX;
+        rowFrame.y = minY;
+        rowFrame.resize(Math.max(1, maxX - minX), Math.max(1, maxY - minY));
+        
+        node.appendChild(rowFrame);
+        
+        // Sort row items by X before appending to maintain left-to-right order
+        row.sort((a, b) => a.x - b.x);
+        for (const child of row) {
+          rowFrame.appendChild(child);
+        }
+        
+        // Apply autolayout to the new row
+        applyAutoLayout(rowFrame, depth + 1);
+      }
+
+      // Re-run applyAutoLayout on the parent now that it contains tidy row frames
+      applyAutoLayout(node, depth + 1);
+    }
     return;
   }
 
