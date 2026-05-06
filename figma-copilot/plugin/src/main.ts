@@ -401,7 +401,66 @@ function applyAutoLayout(node: any, depth = 0) {
       console.warn('AutoLayout: Error applying native inference to', node.name, e.message);
     }
   } else {
-    console.log('AutoLayout: Native inference returned null (cannot infer) for', node.name);
+    console.log('AutoLayout: Native inference returned null. Using robust fallback for', node.name);
+    
+    try {
+      const children = [...node.children] as SceneNode[];
+      if (children.length < 2) return;
+      
+      // Save original container bounds
+      const w = node.width;
+      const h = node.height;
+      
+      // Detect overlaps and mark smaller items as absolute
+      for (let i = 0; i < children.length; i++) {
+        for (let j = i + 1; j < children.length; j++) {
+          const a = children[i];
+          const b = children[j];
+          const overlapX = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
+          const overlapY = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+          const overlapArea = overlapX * overlapY;
+          if (overlapArea > 0) {
+             const areaA = a.width * a.height;
+             const areaB = b.width * b.height;
+             const smaller = areaA < areaB ? a : b;
+             if ('layoutPositioning' in smaller) {
+               smaller.layoutPositioning = 'ABSOLUTE';
+             }
+          }
+        }
+      }
+      
+      // Get non-absolute children
+      const validChildren = children.filter(c => !('layoutPositioning' in c) || c.layoutPositioning !== 'ABSOLUTE');
+      
+      if (validChildren.length < 2) {
+        // If everything overlaps, just make it a stacked frame
+        f.layoutMode = 'HORIZONTAL';
+        f.primaryAxisAlignItems = 'CENTER';
+        f.counterAxisAlignItems = 'CENTER';
+        f.resize(w, h);
+        return;
+      }
+      
+      // Detect direction
+      const ySpread = Math.max(...validChildren.map(c => c.y)) - Math.min(...validChildren.map(c => c.y));
+      const xSpread = Math.max(...validChildren.map(c => c.x)) - Math.min(...validChildren.map(c => c.x));
+      const direction = xSpread > ySpread ? 'HORIZONTAL' : 'VERTICAL';
+      
+      f.layoutMode = direction;
+      
+      // If grid-like (both spreads significant), use Wrap
+      if (xSpread > 20 && ySpread > 20) {
+         try { f.layoutWrap = 'WRAP'; } catch(e) {}
+      }
+      
+      f.primaryAxisSizingMode = 'FIXED';
+      f.counterAxisSizingMode = 'FIXED';
+      f.resize(w, h);
+      
+    } catch (e: any) {
+      console.warn('AutoLayout fallback failed:', e.message);
+    }
   }
 }
 
