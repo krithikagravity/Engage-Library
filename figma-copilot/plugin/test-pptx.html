@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/libs/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.min.js"></script>
+</head>
+<body>
+<div id="pptx-status"></div>
+<script>
+function convertColorToHex(c) {
+  if (!c) return 'CCCCCC';
+  const r = Math.round(c.r * 255).toString(16).padStart(2, '0');
+  const g = Math.round(c.g * 255).toString(16).padStart(2, '0');
+  const b = Math.round(c.b * 255).toString(16).padStart(2, '0');
+  return r + g + b;
+}
+
+function generatePPTX(frames) {
+  const status = document.getElementById('pptx-status');
+  try {
+    let pres = new pptxgen();
+    const scale = 1 / 96;
+    frames.forEach(frame => {
+      let slide = pres.addSlide();
+      if (frame.color) {
+        slide.background = { color: convertColorToHex(frame.color) };
+      }
+      function walkShapes(n) {
+        let rx = (n.x || 0); let ry = (n.y || 0); let rw = (n.width || 100); let rh = (n.height || 100);
+        if (n.type === "TEXT") {
+          let opts = {
+            x: rx * scale, y: ry * scale, w: rw * scale, h: rh * scale,
+            fontSize: n.fontSize || 12, color: convertColorToHex(n.color),
+            valign: n.textAlignVertical === "CENTER" ? "middle" : (n.textAlignVertical === "BOTTOM" ? "bottom" : "top"),
+            align: n.textAlignHorizontal === "CENTER" ? "center" : (n.textAlignHorizontal === "RIGHT" ? "right" : "left"),
+            margin: 0
+          };
+          slide.addText(n.characters || "", opts);
+        } else if (n.type === "RECTANGLE" || n.type === "FRAME" || n.type === "GROUP") {
+          if (n.id !== frame.id && n.color) {
+             let opts = { x: rx * scale, y: ry * scale, w: rw * scale, h: rh * scale, fill: { color: convertColorToHex(n.color) } };
+             slide.addShape(pres.ShapeType.rect, opts);
+          }
+        }
+        if (n.children) n.children.forEach(c => walkShapes(c));
+      }
+      if (frame.children) frame.children.forEach(c => walkShapes(c));
+    });
+    
+    pres.write({ outputType: "base64" }).then((base64) => {
+      status.innerHTML = "SUCCESS";
+      console.log("SUCCESS");
+    }).catch(err => {
+      status.innerHTML = "WRITE ERROR: " + err.message;
+      console.log("WRITE ERROR: " + err.message);
+    });
+  } catch (err) {
+    status.innerHTML = "GEN ERROR: " + err.message;
+    console.log("GEN ERROR: " + err.message);
+  }
+}
+
+const mockFrames = [
+  {
+    id: "1:1", type: "FRAME", color: {r:1, g:1, b:1},
+    children: [
+      { id: "1:2", type: "TEXT", characters: "Hello", x: 10, y: 10, width: 100, height: 20 }
+    ]
+  }
+];
+
+window.onload = () => generatePPTX(mockFrames);
+</script>
+</body>
+</html>

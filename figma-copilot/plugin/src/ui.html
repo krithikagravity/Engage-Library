@@ -1,0 +1,1327 @@
+<!-- v2024-04-24-fix-suggestions -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Figma Copilot</title>
+<script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/libs/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f0f0f;
+    --bg2: #161616;
+    --bg3: #1e1e1e;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --text: #f0f0f0;
+    --text2: #888;
+    --text3: #555;
+    --accent: #7c6aff;
+    --accent2: #a695ff;
+    --user-bg: #1a1830;
+    --ai-bg: #161616;
+    --success: #4ade80;
+    --warn: #fb923c;
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 13px; overflow: hidden; }
+
+  .app { display: flex; flex-direction: column; height: 100vh; }
+  .view { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+
+  /* Componentize panel */
+  .comp-panel { flex:1; overflow-y:auto; padding:10px 12px; display:flex; flex-direction:column; gap:8px; }
+  .comp-panel::-webkit-scrollbar { width:3px; }
+  .comp-panel::-webkit-scrollbar-thumb { background:var(--border2); border-radius:2px; }
+  .comp-issue { background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; }
+  .comp-issue.warn { border-left:3px solid var(--warn); }
+  .comp-issue.error { border-left:3px solid #f87171; }
+  .comp-issue.info { border-left:3px solid var(--accent); }
+  .comp-issue-title { font-size:11px; font-weight:500; color:var(--text); margin-bottom:3px; }
+  .comp-issue-msg { font-size:10.5px; color:var(--text2); line-height:1.5; margin-bottom:6px; }
+  .comp-issue-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .comp-badge { font-size:9px; font-family:'DM Mono',monospace; padding:2px 6px; border-radius:3px; }
+  .comp-badge.warn { background:rgba(251,146,60,0.12); color:var(--warn); }
+  .comp-badge.error { background:rgba(248,113,113,0.1); color:#f87171; }
+  .comp-badge.info { background:rgba(124,106,255,0.1); color:var(--accent2); }
+  .comp-fix-btn { padding:3px 10px; border-radius:4px; border:none; background:var(--accent); color:white; font-size:10px; cursor:pointer; transition:opacity 0.12s; }
+  .comp-fix-btn:hover { opacity:0.85; }
+  .comp-fix-btn.done { background:#4ade80; }
+  .comp-nav-btn { padding:3px 10px; border-radius:4px; border:1px solid var(--border2); background:transparent; color:var(--text2); font-size:10px; cursor:pointer; }
+  .comp-empty { text-align:center; padding:28px 20px; font-size:11.5px; color:var(--text3); line-height:1.7; }
+  .comp-scan-btn { display:block; margin:12px auto 0; padding:7px 18px; border-radius:8px; border:1px solid var(--border2); background:var(--bg3); color:var(--text2); font-size:11px; cursor:pointer; transition:all 0.15s; font-family:'DM Sans',sans-serif; }
+  .comp-scan-btn:hover { background:var(--accent); border-color:var(--accent); color:white; }
+
+  /* Header */
+  .header { padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg); flex-shrink: 0; }
+  .header-left { display: flex; align-items: center; gap: 8px; }
+  .logo { width: 22px; height: 22px; background: var(--accent); border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+  .logo svg { width: 13px; height: 13px; fill: white; }
+  .header-title { font-size: 13px; font-weight: 500; letter-spacing: -0.01em; }
+  .usage-pill { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--text2); background: var(--bg3); border: 1px solid var(--border); padding: 2px 7px; border-radius: 20px; }
+  .usage-pill.warn { color: var(--warn); border-color: rgba(251,146,60,0.3); }
+  .usage-pill.full { color: #f87171; border-color: rgba(248,113,113,0.3); }
+
+  /* Selection bar */
+  .selection-bar { padding: 8px 14px; border-bottom: 1px solid var(--border); background: var(--bg2); display: flex; align-items: center; gap: 6px; min-height: 34px; flex-shrink: 0; }
+  .selection-tag { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--accent2); background: rgba(124,106,255,0.1); border: 1px solid rgba(124,106,255,0.2); padding: 2px 7px; border-radius: 4px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .selection-type { font-size: 10px; color: var(--text3); font-family: 'DM Mono', monospace; }
+  .no-selection { font-size: 11px; color: var(--text3); font-style: italic; }
+
+  /* Messages */
+  .messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; scroll-behavior: smooth; }
+  .messages::-webkit-scrollbar { width: 3px; }
+  .messages::-webkit-scrollbar-track { background: transparent; }
+  .messages::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .msg { display: flex; flex-direction: column; gap: 4px; animation: fadeUp 0.2s ease; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+  .msg-bubble { padding: 9px 12px; border-radius: 10px; line-height: 1.55; font-size: 12.5px; }
+  .msg.user .msg-bubble { background: var(--user-bg); border: 1px solid rgba(124,106,255,0.15); border-bottom-right-radius: 3px; align-self: flex-end; max-width: 88%; color: var(--text); }
+  .msg.ai .msg-bubble { background: var(--ai-bg); border: 1px solid var(--border); border-bottom-left-radius: 3px; align-self: flex-start; max-width: 92%; }
+
+  .msg-label { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--text3); padding: 0 2px; }
+  .msg.user .msg-label { text-align: right; }
+
+  .actions-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+  .action-chip { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--success); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 2px 8px; border-radius: 4px; }
+
+  /* Typing indicator */
+  .typing { display: flex; align-items: center; gap: 4px; padding: 10px 12px; background: var(--ai-bg); border: 1px solid var(--border); border-radius: 10px; border-bottom-left-radius: 3px; width: fit-content; }
+  .typing span { width: 5px; height: 5px; background: var(--text3); border-radius: 50%; animation: blink 1.2s ease infinite; }
+  .typing span:nth-child(2) { animation-delay: 0.2s; }
+  .typing span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }
+
+  /* Suggestions */
+  .suggestions { padding: 0 12px 8px; display: flex; flex-wrap: wrap; gap: 5px; flex-shrink: 0; }
+  .suggestion { font-size: 11px; color: var(--text2); background: var(--bg2); border: 1px solid var(--border); padding: 4px 10px; border-radius: 20px; cursor: pointer; transition: all 0.12s; white-space: nowrap; }
+  .suggestion:hover { color: var(--text); border-color: var(--border2); background: var(--bg3); }
+
+  /* Input */
+  .input-area { padding: 10px 12px; border-top: 1px solid var(--border); background: var(--bg); flex-shrink: 0; }
+  .input-row { display: flex; gap: 8px; align-items: flex-end; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; transition: border-color 0.15s; }
+  .input-row:focus-within { border-color: var(--border2); }
+  textarea { flex: 1; background: transparent; border: none; outline: none; color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 12.5px; line-height: 1.5; resize: none; max-height: 80px; min-height: 20px; }
+  textarea::placeholder { color: var(--text3); }
+  .send-btn { width: 28px; height: 28px; border-radius: 7px; background: var(--accent); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: opacity 0.12s, transform 0.1s; }
+  .send-btn:hover { opacity: 0.85; }
+  .send-btn:active { transform: scale(0.94); }
+  .send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .send-btn svg { width: 13px; height: 13px; fill: white; }
+
+  /* Tabs */
+  .tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg); flex-shrink: 0; }
+  .tab { flex: 1; padding: 8px 0; font-size: 11px; font-family: 'DM Mono', monospace; color: var(--text3); background: none; border: none; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; letter-spacing: 0.3px; }
+  .tab:hover { color: var(--text2); }
+  .tab.active { color: var(--accent2); border-bottom-color: var(--accent); }
+
+  /* Quick Edit panel */
+  .qe-panel { flex: 1; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .qe-panel::-webkit-scrollbar { width: 3px; }
+  .qe-panel::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  .qe-frame { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .qe-frame-header { padding: 7px 10px; display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  .qe-frame-header:hover { background: var(--bg3); }
+  .qe-frame-name { font-size: 11px; font-weight: 500; color: var(--text); flex: 1; }
+  .qe-frame-count { font-size: 9px; font-family: 'DM Mono', monospace; color: var(--text3); }
+  .qe-chevron { font-size: 10px; color: var(--text3); transition: transform 0.15s; }
+  .qe-frame.open .qe-chevron { transform: rotate(90deg); }
+  .qe-items { display: none; border-top: 1px solid var(--border); }
+  .qe-frame.open .qe-items { display: block; }
+  .qe-item { padding: 6px 10px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); }
+  .qe-item:last-child { border-bottom: none; }
+  .qe-item-label { font-size: 10px; color: var(--text2); min-width: 70px; max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'DM Mono', monospace; }
+  .qe-item-input { flex: 1; background: var(--bg3); border: 1px solid var(--border); border-radius: 5px; padding: 4px 8px; font-size: 11px; color: var(--text); font-family: 'DM Sans', sans-serif; outline: none; transition: border-color 0.15s; }
+  .qe-item-input:focus { border-color: var(--accent); }
+  .qe-apply-btn { padding: 3px 8px; border-radius: 4px; border: none; background: var(--accent); color: white; font-size: 10px; cursor: pointer; flex-shrink: 0; opacity: 0.85; transition: opacity 0.12s; }
+  .qe-apply-btn:hover { opacity: 1; }
+  .qe-apply-btn.done { background: #4ade80; opacity: 1; }
+  .qe-color-swatch { width: 20px; height: 20px; border-radius: 4px; border: 1px solid var(--border2); flex-shrink: 0; cursor: pointer; transition: transform 0.1s; }
+  .qe-color-swatch:hover { transform: scale(1.15); }
+  .qe-section-label { font-size: 9px; font-family: 'DM Mono', monospace; color: var(--text3); padding: 5px 10px 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .qe-empty { text-align: center; padding: 30px 20px; font-size: 11.5px; color: var(--text3); line-height: 1.7; }
+  .qe-scan-btn { display: block; margin: 12px auto 0; padding: 7px 18px; border-radius: 8px; border: 1px solid var(--border2); background: var(--bg3); color: var(--text2); font-size: 11px; cursor: pointer; transition: all 0.15s; font-family: 'DM Sans', sans-serif; }
+  .qe-scan-btn:hover { background: var(--accent); border-color: var(--accent); color: white; }
+
+  /* Multi-screen banner */
+  .multiscreen-bar { padding: 6px 14px; border-bottom: 1px solid rgba(124,106,255,0.18); background: rgba(124,106,255,0.06); display: none; align-items: center; gap: 8px; flex-shrink: 0; }
+  .multiscreen-bar.active { display: flex; }
+  .multiscreen-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+  .multiscreen-label { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--accent2); flex: 1; }
+  .screen-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+  .screen-chip { font-size: 9px; font-family: 'DM Mono', monospace; color: var(--text3); background: var(--bg3); border: 1px solid var(--border); padding: 1px 6px; border-radius: 3px; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Audit panel */
+  .audit-panel { background: var(--bg2); border: 1px solid var(--border2); border-radius: 10px; padding: 12px; margin: 6px 0; animation: fadeUp 0.2s ease; }
+  .audit-panel-header { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+  .audit-icon { font-size: 14px; }
+  .audit-panel-title { font-size: 11px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: var(--text2); flex: 1; }
+  .audit-close { font-size: 16px; color: var(--text3); cursor: pointer; line-height: 1; background: none; border: none; color: var(--text3); }
+  .audit-close:hover { color: var(--text); }
+  .audit-section { margin-bottom: 10px; }
+  .audit-section-title { font-size: 9px; font-family: 'DM Mono', monospace; color: var(--text3); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 5px; }
+  .audit-item { display: flex; align-items: flex-start; gap: 6px; padding: 5px 8px; border-radius: 6px; margin-bottom: 3px; background: var(--bg3); }
+  .audit-item.warn { border-left: 2px solid var(--warn); }
+  .audit-item.error { border-left: 2px solid #f87171; }
+  .audit-item.ok { border-left: 2px solid var(--success); }
+  .audit-item-text { font-size: 11px; color: var(--text); line-height: 1.5; flex: 1; }
+  .audit-item-badge { font-size: 9px; font-family: 'DM Mono', monospace; padding: 1px 5px; border-radius: 3px; flex-shrink: 0; margin-top: 2px; }
+  .audit-item.warn .audit-item-badge { background: rgba(251,146,60,0.15); color: var(--warn); }
+  .audit-item.error .audit-item-badge { background: rgba(248,113,113,0.12); color: #f87171; }
+  .audit-item.ok .audit-item-badge { background: rgba(74,222,128,0.1); color: var(--success); }
+  .audit-loading { text-align: center; padding: 20px; font-size: 11px; color: var(--text3); }
+
+  /* Audit trigger button */
+  .audit-btn { display: flex; align-items: center; gap: 5px; font-size: 10px; font-family: 'DM Mono', monospace; color: var(--text2); background: var(--bg2); border: 1px solid var(--border); padding: 3px 9px; border-radius: 5px; cursor: pointer; transition: all 0.12s; flex-shrink: 0; }
+  .audit-btn:hover { color: var(--warn); border-color: rgba(251,146,60,0.3); background: rgba(251,146,60,0.05); }
+  .audit-btn svg { width: 10px; height: 10px; fill: currentColor; }
+
+  /* Welcome */
+  .welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px 20px; text-align: center; flex: 1; }
+  .welcome-icon { width: 40px; height: 40px; background: rgba(124,106,255,0.12); border: 1px solid rgba(124,106,255,0.2); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 4px; }
+  .welcome-icon svg { width: 20px; height: 20px; fill: var(--accent2); }
+  .welcome h2 { font-size: 14px; font-weight: 500; letter-spacing: -0.02em; }
+  .welcome p { font-size: 11.5px; color: var(--text2); line-height: 1.6; max-width: 220px; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">
+        <svg viewBox="0 0 16 16"><path d="M8 1L2 4v4c0 3.3 2.5 6.4 6 7.2C11.5 14.4 14 11.3 14 8V4L8 1z"/></svg>
+      </div>
+      <span class="header-title">Figma Copilot</span>
+    </div>
+    <span class="usage-pill" id="usage-pill">— / 20</span>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" id="tab-chat" onclick="switchTab('chat')">💬 Chat</button>
+
+    <button class="tab" id="tab-comp" onclick="switchTab('comp')">📐 Autolayout</button>
+    <button class="tab" id="tab-pptx" onclick="switchTab('pptx')">📥 Export PPTX</button>
+    <button class="tab" id="tab-dark" onclick="switchTab('dark')">🌙 Dark Mode</button>
+  </div>
+
+  <!-- Chat tab -->
+  <div id="view-chat" class="view">
+    <div class="selection-bar" id="selection-bar">
+      <span class="no-selection">No layer selected</span>
+    </div>
+    <div class="multiscreen-bar" id="multiscreen-bar">
+      <div class="multiscreen-dot"></div>
+      <span class="multiscreen-label" id="multiscreen-label">Multi-screen mode</span>
+      <button class="audit-btn" id="audit-btn" onclick="triggerAudit()">
+        <svg viewBox="0 0 16 16"><path d="M2 3h12v2H2zm0 4h8v2H2zm0 4h10v2H2z"/></svg>
+        Audit all screens
+      </button>
+    </div>
+    <div class="messages" id="messages">
+      <div class="welcome" id="welcome">
+        <div class="welcome-icon">
+          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+        </div>
+        <h2>Your design assistant</h2>
+      </div>
+    </div>
+    <div class="suggestions" id="suggestions">
+      <span class="suggestion" onclick="sendSuggestion(this)">Suggest better colors</span>
+      <span class="suggestion" onclick="sendSuggestion(this)">Apply colors to all screens</span>
+      <span class="suggestion" onclick="sendSuggestion(this)">Audit visual inconsistencies</span>
+      <span class="suggestion" onclick="sendSuggestion(this)">Fix spacing</span>
+      <span class="suggestion" onclick="sendSuggestion(this)">Rename this frame</span>
+    </div>
+    <div id="limit-banner" class="limit-banner" style="display:none">
+      You've used all 100 messages for today. Come back tomorrow!
+    </div>
+    <div class="input-area">
+      <div class="input-row">
+        <textarea id="input" placeholder="e.g. Change the title to Launch Week…" rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+        <button class="send-btn" id="send-btn" onclick="sendMessage()">
+          <svg viewBox="0 0 16 16"><path d="M2 8l12-6-6 12V9L2 8z"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Autolayout tab -->
+  <div id="view-comp" class="view" style="display:none;">
+    <div class="comp-panel" id="comp-panel">
+      <div class="comp-empty">
+        <div style="font-size:28px;margin-bottom:8px;">📐</div>
+        <strong style="color:var(--text2);font-size:12px;">Apply Auto-Layout</strong><br>
+        Select a frame, then click to instantly apply optimal Auto-Layout settings based on its contents.
+        <button class="comp-scan-btn" onclick="applyAutoLayout()">✨ Apply Auto-Layout</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PPTX tab -->
+  <div id="view-pptx" class="view" style="display:none;">
+    <div class="comp-panel">
+      <div class="comp-empty">
+        <div style="font-size:28px;margin-bottom:8px;">📥</div>
+        <strong style="color:var(--text2);font-size:12px;">Export to PowerPoint</strong><br>
+        Select frames on your canvas, then export them as an editable .pptx file.
+        <button class="comp-scan-btn" onclick="exportPPTX()">📥 Export Selected Frames</button>
+        <div id="pptx-status" style="margin-top:15px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dark Mode tab -->
+  <div id="view-dark" class="view" style="display:none;">
+    <div class="comp-panel">
+      <div class="comp-empty">
+        <div style="font-size:28px;margin-bottom:8px;">🌙</div>
+        <strong style="color:var(--text2);font-size:12px;">Dark Mode UI</strong><br>
+        Select a frame, then generate an aesthetic dark mode version of it.
+        <button class="comp-scan-btn" onclick="applyDarkMode()">✨ Generate Dark Mode</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// State
+let state = {
+  userId: 'anonymous',
+  userName: 'Designer',
+  tokens: {},
+  selection: null,
+  fullContext: null,
+  history: [],
+  usage: 0,
+  loading: false,
+  limit: 100,
+  _auditTimer: null,
+  _activeTab: 'chat',
+};
+
+// Replace this with your actual Vercel backend URL after deploying
+const BACKEND_URL = 'https://backend-kappa-flax-89.vercel.app/api/chat';
+
+// Receive messages from Figma sandbox
+window.onmessage = (event) => {
+  const msg = event.data.pluginMessage;
+  if (!msg) return;
+
+  switch (msg.type) {
+    case 'INIT':
+      state.userId = msg.payload.userId;
+      state.userName = msg.payload.userName;
+      state.tokens = msg.payload.tokens;
+      updateUsagePill();
+      break;
+
+    case 'SELECTION_CHANGED':
+      state.selection = msg.payload;
+      updateSelectionBar();
+      break;
+
+    case 'ACTIONS_DONE':
+      state.loading = false;
+      updateSendBtn();
+      break;
+
+    case 'FULL_CONTEXT':
+      state.fullContext = msg.payload;
+      break;
+
+    case 'COLOR_SUGGESTIONS':
+      showColorSuggestions(msg.payload);
+      state.loading = false;
+      updateSendBtn();
+      break;
+
+    case 'AUDIT_DATA':
+      showAuditPanel(msg.payload);
+      break;
+
+    case 'PAGE_SCAN':
+      renderQuickEdit(msg.payload);
+      break;
+
+    case 'COMPONENT_AUDIT_DATA':
+      renderComponentAudit(msg.payload);
+      break;
+
+    case 'PPTX_DATA':
+      generatePPTX(msg.payload);
+      break;
+
+    case 'PPTX_START':
+      // Initialize the frame collection buffer
+      window._pptxFrames = [];
+      window._pptxTotal = msg.total;
+      const statusStart = document.getElementById('pptx-status');
+      if (statusStart) statusStart.innerHTML = `<div class="audit-loading">📥 Starting export of ${msg.total} frame(s)...</div>`;
+      break;
+
+    case 'PPTX_FRAME':
+      // Collect each frame as it arrives
+      if (!window._pptxFrames) window._pptxFrames = [];
+      window._pptxFrames[msg.index] = msg.frame;
+      const statusFrame = document.getElementById('pptx-status');
+      // Show debug info: name, dimensions, image data size
+      const imgLen = msg.frame.backgroundImage ? msg.frame.backgroundImage.length : 0;
+      if (statusFrame) statusFrame.innerHTML = `<div class="audit-loading">📥 Frame ${msg.index + 1}/${msg.total}: <b>${msg.frame.name}</b><br>Size: ${msg.frame.width}×${msg.frame.height}px | Image data: ${Math.round(imgLen/1024)}KB</div>`;
+      // When all frames received, generate the PPTX
+      if (window._pptxFrames.filter(Boolean).length === msg.total) {
+        generatePPTX(window._pptxFrames);
+        window._pptxFrames = [];
+      }
+      break;
+
+    case 'PPTX_PROGRESS':
+      const statusProg = document.getElementById('pptx-status');
+      if (statusProg) statusProg.innerHTML = `<div class="audit-loading">📥 ${msg.count}</div>`;
+      break;
+  }
+};
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  state._activeTab = tab;
+  document.getElementById('view-chat').style.display = tab === 'chat' ? 'flex' : 'none';
+  document.getElementById('view-comp').style.display = tab === 'comp' ? 'flex' : 'none';
+  document.getElementById('view-pptx').style.display = tab === 'pptx' ? 'flex' : 'none';
+  document.getElementById('view-dark').style.display = tab === 'dark' ? 'flex' : 'none';
+  document.getElementById('tab-chat').className = 'tab' + (tab === 'chat' ? ' active' : '');
+  document.getElementById('tab-comp').className = 'tab' + (tab === 'comp' ? ' active' : '');
+  document.getElementById('tab-pptx').className = 'tab' + (tab === 'pptx' ? ' active' : '');
+  document.getElementById('tab-dark').className = 'tab' + (tab === 'dark' ? ' active' : '');
+}
+
+function applyDarkMode() {
+  parent.postMessage({ pluginMessage: { type: 'APPLY_DARK_MODE' } }, '*');
+}
+
+function applyAutoLayout() {
+  parent.postMessage({ pluginMessage: { type: 'APPLY_AUTOLAYOUT' } }, '*');
+}
+
+function updateSelectionBar() {
+  const bar = document.getElementById('selection-bar');
+  const msBar = document.getElementById('multiscreen-bar');
+  const msLabel = document.getElementById('multiscreen-label');
+  if (!state.selection) {
+    bar.innerHTML = '<span class="no-selection">No layer selected</span>';
+    msBar.classList.remove('active');
+    return;
+  }
+  if (state.selection.multiSelect) {
+    const count = state.selection.count;
+    const names = state.selection.nodes.slice(0, 3).map(n => n.name);
+    const extra = count > 3 ? ` +${count - 3} more` : '';
+    bar.innerHTML = `
+      <span class="selection-tag">${count} screens selected</span>
+      <span class="selection-type" style="font-size:9px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${names.join(', ')}${extra}</span>
+    `;
+    msLabel.textContent = `${count} screens — changes apply to all`;
+    msBar.classList.add('active');
+    return;
+  }
+  msBar.classList.remove('active');
+  bar.innerHTML = `
+    <span class="selection-tag">${state.selection.name}</span>
+    <span class="selection-type">${state.selection.type}</span>
+    ${state.selection.width ? `<span class="selection-type">${state.selection.width}×${state.selection.height}</span>` : ''}
+  `;
+}
+
+function updateUsagePill() {
+  const pill = document.getElementById('usage-pill');
+  const remaining = state.limit - state.usage;
+  pill.textContent = `${state.usage} / ${state.limit}`;
+  pill.className = 'usage-pill';
+  if (state.usage >= state.limit) pill.classList.add('full');
+  else if (remaining <= 5) pill.classList.add('warn');
+}
+
+function updateSendBtn() {
+  const btn = document.getElementById('send-btn');
+  const input = document.getElementById('input');
+  btn.disabled = state.loading || state.usage >= state.limit;
+  input.disabled = state.loading || state.usage >= state.limit;
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 80) + 'px';
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function sendSuggestion(el) {
+  state.history = [];
+  document.getElementById('input').value = el.textContent;
+  sendMessage();
+}
+
+
+function appendMessage(role, text, actions) {
+  const welcome = document.getElementById('welcome');
+  if (welcome) welcome.remove();
+
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+
+  const label = document.createElement('div');
+  label.className = 'msg-label';
+  label.textContent = role === 'user' ? 'You' : 'Copilot';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  bubble.textContent = text;
+
+  div.appendChild(label);
+  div.appendChild(bubble);
+
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function showTyping() {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.id = 'typing-indicator';
+  div.className = 'msg ai';
+  div.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function removeTyping() {
+  const t = document.getElementById('typing-indicator');
+  if (t) t.remove();
+}
+
+async function sendMessage() {
+  // Request full context (with text node scan) right before sending
+  parent.postMessage({ pluginMessage: { type: 'GET_FULL_CONTEXT' } }, '*');
+  await new Promise(function(resolve) {
+    var handler = function(event) {
+      if (event.data.pluginMessage && event.data.pluginMessage.type === 'FULL_CONTEXT') {
+        state.fullContext = event.data.pluginMessage.payload;
+        window.removeEventListener('message', handler);
+        resolve(null);
+      }
+    };
+    window.addEventListener('message', handler);
+    setTimeout(resolve, 2000);
+  });
+  return _sendMessage();
+}
+
+async function _sendMessage() {
+  const input = document.getElementById('input');
+  const text = input.value.trim();
+  if (!text || state.loading || state.usage >= state.limit) return;
+
+  if (state.usage >= state.limit) {
+    document.getElementById('limit-banner').style.display = 'block';
+    return;
+  }
+
+  input.value = '';
+  input.style.height = 'auto';
+  appendMessage('user', text);
+
+  state.loading = true;
+  updateSendBtn();
+  showTyping();
+
+  state.history.push({ role: 'user', content: text });
+
+  try {
+    let sel = state.fullContext || state.selection;
+    const msgLower = text.toLowerCase();
+    const isAudit = msgLower.includes('audit') || msgLower.includes('fix spacing') || msgLower.includes('explain') || msgLower.includes('rename this frame');
+    if (sel) {
+      if (sel.multiSelect) {
+        sel = {
+          multiSelect: true,
+          count: sel.count,
+          nodes: (sel.nodes || []).map(function(n) { return {
+            id: n.id, name: n.name, type: n.type,
+            width: n.width, height: n.height,
+            allTextNodes: (n.allTextNodes || []).slice(0, 50)
+          }; })
+        };
+      } else {
+        sel = {
+          id: sel.id,
+          name: sel.name,
+          type: sel.type,
+          color: sel.color,
+          width: sel.width,
+          height: sel.height,
+          cornerRadius: sel.cornerRadius,
+          paddingTop: sel.paddingTop,
+          paddingLeft: sel.paddingLeft,
+          allTextNodes: (sel.allTextNodes || []).slice(0, 50),
+          children: (sel.children || []).slice(0, 30).map(c => ({
+            id: c.id, name: c.name, type: c.type,
+            color: c.color,
+            width: c.width, height: c.height,
+            x: c.x, y: c.y,
+            paddingTop: c.paddingTop, paddingLeft: c.paddingLeft,
+            cornerRadius: c.cornerRadius,
+            children: (c.children || []).slice(0, 5).map(gc => ({
+              id: gc.id, name: gc.name, type: gc.type,
+              color: gc.color,
+              characters: gc.characters
+            }))
+          }))
+        };
+      }
+    }
+
+    const res = await fetch(BACKEND_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: state.userId,
+        message: text,
+        sessionHistory: state.history,
+        selectionContext: sel,
+        designTokens: state.tokens,
+      }),
+    });
+
+    const data = await res.json();
+    removeTyping();
+
+    if (res.status === 429) {
+      state.usage = state.limit;
+      updateUsagePill();
+      updateSendBtn();
+      document.getElementById('limit-banner').style.display = 'block';
+      appendMessage('ai', data.message || "You've reached your daily limit. Come back tomorrow!");
+      return;
+    }
+
+    if (!res.ok) throw new Error(data.error || 'Something went wrong');
+
+    let { response, actions } = data;
+    actions = actions || [];
+
+    // Scrub raw JSON from response text
+    if (response.includes('"newColor"') || response.includes('"nodeId"')) {
+      response = "I've analyzed the current palette and suggested some aesthetic improvements to make your design look more premium and harmonious.";
+    }
+    if (!response || response.length < 8) {
+      response = "I've analyzed your design and suggested some improvements below.";
+    }
+
+    state.usage++;
+    updateUsagePill();
+    state.history.push({ role: 'assistant', content: response });
+    appendMessage('ai', response);
+
+    // Send all actions to main.js (main.js handles SUGGEST_COLORS by posting COLOR_SUGGESTIONS back to window.onmessage)
+    if (actions && actions.length > 0) {
+      parent.postMessage({ pluginMessage: { type: 'EXECUTE_ACTIONS', actions: actions } }, '*');
+    } else {
+      state.loading = false;
+      updateSendBtn();
+    }
+
+  } catch (err) {
+    console.error('FETCH_ERROR:', err);
+    removeTyping();
+    appendMessage('ai', 'Error: ' + (err.message || 'Something went wrong') + '. Please try deploying your backend changes with "vercel --prod".');
+    state.loading = false;
+    updateSendBtn();
+  }
+}
+
+// Request initial selection on load
+parent.postMessage({ pluginMessage: { type: 'GET_SELECTION' } }, '*');
+// Also request again after a short delay to ensure plugin is ready
+setTimeout(function() {
+  parent.postMessage({ pluginMessage: { type: 'GET_SELECTION' } }, '*');
+}, 800);
+
+
+// Re-fetch selection every time user clicks the input box
+document.getElementById('input').addEventListener('focus', () => {
+  parent.postMessage({ pluginMessage: { type: 'GET_SELECTION' } }, '*');
+});
+
+function toHex(r, g, b) {
+  function c(x) { var h = Math.round(x * 255).toString(16); return h.length === 1 ? '0' + h : h; }
+  return '#' + c(r) + c(g) + c(b);
+}
+
+function colorDistance(c1, c2) {
+  return Math.pow(c1.r - c2.r, 2) + Math.pow(c1.g - c2.g, 2) + Math.pow(c1.b - c2.b, 2);
+}
+
+function findClosestToken(r, g, b, isText) {
+  var closest = null;
+  var minDiff = 2.0; // Large threshold to always snap to *something* if tokens exist
+  if (state.tokens) {
+    var checkList = function(list) {
+      if (!list) return;
+      list.forEach(function(t) {
+        if (t.color) {
+          var penalty = 0;
+          var nameLower = t.name.toLowerCase();
+          if (isText && (nameLower.indexOf('surface') > -1 || nameLower.indexOf('bg') > -1 || nameLower.indexOf('background') > -1 || nameLower.indexOf('border') > -1)) penalty += 0.3;
+          if (!isText && (nameLower.indexOf('text') > -1 || nameLower.indexOf('icon') > -1 || nameLower.indexOf('typography') > -1)) penalty += 0.3;
+          var dist = colorDistance({r:r,g:g,b:b}, t.color) + penalty;
+          if (dist < minDiff) {
+            minDiff = dist;
+            closest = t;
+          }
+        }
+      });
+    };
+    checkList(state.tokens.variables);
+    checkList(state.tokens.colors);
+  }
+  return closest;
+}
+
+function showColorSuggestions(suggestions) {
+  if (!suggestions || suggestions.length === 0) return;
+  var container = document.createElement('div');
+  container.style.cssText = 'background:#1e1e1e;border:1px solid #333;border-radius:8px;padding:12px;margin:8px 0;';
+
+  var title = document.createElement('div');
+  title.style.cssText = 'font-size:11px;color:#aaa;margin-bottom:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;';
+  title.textContent = 'Color Suggestions';
+  container.appendChild(title);
+
+  suggestions.forEach(function(s) {
+    try {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;';
+
+      var oldR = (s.oldColor && s.oldColor.r != null) ? s.oldColor.r : 0.5;
+      var oldG = (s.oldColor && s.oldColor.g != null) ? s.oldColor.g : 0.5;
+      var oldB = (s.oldColor && s.oldColor.b != null) ? s.oldColor.b : 0.5;
+
+      var newR = (s.newColor && s.newColor.r != null) ? s.newColor.r : 0.5;
+      var newG = (s.newColor && s.newColor.g != null) ? s.newColor.g : 0.5;
+      var newB = (s.newColor && s.newColor.b != null) ? s.newColor.b : 0.5;
+
+      var isText = (s.nodeName || '').toLowerCase().indexOf('text') > -1;
+      var matchedToken = findClosestToken(newR, newG, newB, isText);
+      if (matchedToken) {
+         newR = matchedToken.color.r;
+         newG = matchedToken.color.g;
+         newB = matchedToken.color.b;
+         s.matchedToken = matchedToken;
+      }
+
+      var oldSwatch = document.createElement('div');
+      oldSwatch.style.cssText = 'width:24px;height:24px;border-radius:4px;border:1px solid #444;flex-shrink:0;';
+      oldSwatch.style.background = toHex(oldR, oldG, oldB);
+
+      var arrow = document.createElement('div');
+      arrow.style.cssText = 'color:#666;font-size:12px;';
+      arrow.textContent = '→';
+
+      var newSwatch = document.createElement('div');
+      newSwatch.style.cssText = 'width:24px;height:24px;border-radius:4px;border:1px solid #444;flex-shrink:0;';
+      newSwatch.style.background = toHex(newR, newG, newB);
+
+      var label = document.createElement('div');
+      label.style.cssText = 'font-size:11px;color:#ccc;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      var labelText = s.nodeName || 'Layer';
+      if (matchedToken) labelText += ' (' + matchedToken.name + ')';
+      label.textContent = labelText;
+
+      var applyRowBtn = document.createElement('button');
+      applyRowBtn.textContent = 'Apply';
+      applyRowBtn.style.cssText = 'padding:4px 8px;border-radius:4px;border:none;background:#2d3748;color:#fff;font-size:10px;cursor:pointer;';
+      applyRowBtn.onclick = function() {
+        var act = { type: 'SET_FILL_COLOR', nodeId: s.nodeId, r: newR, g: newG, b: newB, a: 1 };
+        if (s.matchedToken) {
+           if (s.matchedToken.type === 'COLOR') act.variableId = s.matchedToken.id;
+           else act.styleId = s.matchedToken.id;
+        }
+        parent.postMessage({ pluginMessage: { type: 'EXECUTE_ACTIONS', actions: [act] } }, '*');
+        applyRowBtn.textContent = 'Applied';
+        applyRowBtn.style.background = '#48bb78';
+      };
+
+      row.appendChild(oldSwatch);
+      row.appendChild(arrow);
+      row.appendChild(newSwatch);
+      row.appendChild(label);
+      row.appendChild(applyRowBtn);
+      container.appendChild(row);
+    } catch(e) { console.error('Row error:', e, s); }
+  });
+
+  var btns = document.createElement('div');
+  btns.style.cssText = 'display:flex;gap:8px;margin-top:10px;';
+
+  var applyBtn = document.createElement('button');
+  applyBtn.textContent = 'Apply all';
+  applyBtn.style.cssText = 'flex:1;padding:6px;border-radius:6px;border:none;background:#5c6bc0;color:#fff;font-size:12px;cursor:pointer;';
+  applyBtn.onclick = function() {
+    var acts = suggestions.map(function(s) {
+      var act = { type: 'SET_FILL_COLOR', nodeId: s.nodeId,
+        r: (s.matchedToken ? s.matchedToken.color.r : ((s.newColor && s.newColor.r != null) ? s.newColor.r : 0.5)),
+        g: (s.matchedToken ? s.matchedToken.color.g : ((s.newColor && s.newColor.g != null) ? s.newColor.g : 0.5)),
+        b: (s.matchedToken ? s.matchedToken.color.b : ((s.newColor && s.newColor.b != null) ? s.newColor.b : 0.5)),
+        a: 1 };
+      if (s.matchedToken) {
+         if (s.matchedToken.type === 'COLOR') act.variableId = s.matchedToken.id;
+         else act.styleId = s.matchedToken.id;
+      }
+      return act;
+    });
+    parent.postMessage({ pluginMessage: { type: 'EXECUTE_ACTIONS', actions: acts } }, '*');
+    container.remove();
+  };
+
+  var dismissBtn = document.createElement('button');
+  dismissBtn.textContent = 'Dismiss';
+  dismissBtn.style.cssText = 'flex:1;padding:6px;border-radius:6px;border:1px solid #444;background:transparent;color:#aaa;font-size:12px;cursor:pointer;';
+  dismissBtn.onclick = function() { container.remove(); };
+
+  btns.appendChild(applyBtn);
+  btns.appendChild(dismissBtn);
+  container.appendChild(btns);
+
+  var messages = document.getElementById('messages');
+  messages.appendChild(container);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+// ── Audit ─────────────────────────────────────────────────────────────────────
+
+
+
+function triggerAudit() {
+  const welcome = document.getElementById('welcome');
+  if (welcome) welcome.remove();
+  const msgs = document.getElementById('messages');
+
+  // Show loading panel
+  const loading = document.createElement('div');
+  loading.id = 'audit-loading-panel';
+  loading.className = 'audit-panel';
+  loading.innerHTML = '<div class="audit-loading">🔍 Scanning all screens for issues…</div>';
+  msgs.appendChild(loading);
+  msgs.scrollTop = msgs.scrollHeight;
+
+  // Request deep audit data from main.ts
+  parent.postMessage({ pluginMessage: { type: 'AUDIT_SELECTION' } }, '*');
+
+  // Fallback: if no AUDIT_DATA arrives in 3s, use existing selection context
+  state._auditTimer = setTimeout(function() {
+    const existing = document.getElementById('audit-loading-panel');
+    if (existing) {
+      existing.remove();
+      runAuditFromContext(state.fullContext || state.selection);
+    }
+  }, 3000);
+}
+
+function showAuditPanel(screens) {
+  clearTimeout(state._auditTimer);
+  const loading = document.getElementById('audit-loading-panel');
+  if (loading) loading.remove();
+
+  if (!screens || screens.length === 0) {
+    runAuditFromContext(state.fullContext || state.selection);
+    return;
+  }
+
+  const issues = collectAuditIssues(screens);
+  renderAuditPanel(issues, screens.length);
+}
+
+function runAuditFromContext(ctx) {
+  if (!ctx) {
+    appendMessage('ai', 'Please select one or more frames to audit.');
+    return;
+  }
+  const screens = ctx.multiSelect ? (ctx.nodes || []) : [ctx];
+  const issues = collectAuditIssues(screens);
+  renderAuditPanel(issues, screens.length);
+}
+
+function exportPPTX() {
+  const status = document.getElementById('pptx-status');
+  if (status) status.innerHTML = '<div class="audit-loading">📥 Extracting frames...</div>';
+  parent.postMessage({ pluginMessage: { type: 'EXPORT_PPTX' } }, '*');
+}
+
+function convertColorToHex(c) {
+  if (!c) return 'CCCCCC';
+  const r = Math.round(c.r * 255).toString(16).padStart(2, '0');
+  const g = Math.round(c.g * 255).toString(16).padStart(2, '0');
+  const b = Math.round(c.b * 255).toString(16).padStart(2, '0');
+  return r + g + b;
+}
+
+async function generatePPTX(frames) {
+  const status = document.getElementById('pptx-status');
+  if (frames.error) { if (status) status.innerHTML = '<div class="audit-loading" style="color:#f87171;">❌ ' + frames.error + '</div>'; return; }
+  if (!frames || frames.length === 0) { if (status) status.innerHTML = '<div class="audit-loading" style="color:#f87171;">❌ No frames to export.</div>'; return; }
+  if (status) status.innerHTML = '<div class="audit-loading">📥 Generating PPTX...</div>';
+  try {
+    const pres = new PptxGenJS();
+    const firstW = frames[0].width || 1920, firstH = frames[0].height || 1080;
+    const ar = firstW / firstH;
+    let slideW = 13.33, slideH = Math.round((13.33/ar)*100)/100;
+    if (slideH > 13.33) { slideH = 13.33; slideW = Math.round((13.33*ar)*100)/100; }
+    slideW = Math.round(slideW*100)/100; slideH = Math.round(slideH*100)/100;
+    pres.defineLayout({ name: 'FIGMA_LAYOUT', width: slideW, height: slideH });
+    pres.layout = 'FIGMA_LAYOUT';
+
+    for (let i = 0; i < frames.length; i++) {
+      const frame = frames[i];
+      if (status) status.innerHTML = `<div class="audit-loading">📥 Slide ${i+1}/${frames.length}: assembling...</div>`;
+      const slide = pres.addSlide();
+      const sx = slideW / (frame.width || 1920);
+      const sy = slideH / (frame.height || 1080);
+
+      // Layer 1: pixel-perfect PNG (text was hidden during export — no doubling)
+      if (frame.backgroundImage) {
+        slide.addImage({ data: 'image/png;base64,' + frame.backgroundImage, x: 0, y: 0, w: slideW, h: slideH });
+      }
+
+      // Layer 2: native editable text boxes placed exactly where the text was in Figma
+      if (frame.textNodes && frame.textNodes.length > 0) {
+        for (const tn of frame.textNodes) {
+          if (!tn.text || !tn.text.trim()) continue;
+          const x = Math.max(0, tn.x * sx);
+          const y = Math.max(0, tn.y * sy);
+          const w = Math.max(0.05, tn.width * sx);
+          const h = Math.max(0.05, tn.height * sy);
+          const fontSize = Math.max(6, Math.round(tn.fontSize * sx * 72));
+          try {
+            slide.addText(tn.text, {
+              x, y, w, h, fontSize,
+              fontFace: tn.fontFamily || 'Arial',
+              bold: tn.bold || false, italic: tn.italic || false,
+              align: tn.align || 'left', color: tn.color || '000000',
+              fill: { type: 'none' }, line: { type: 'none' },
+              margin: 0, wrap: true, valign: 'top',
+            });
+          } catch (_) {}
+        }
+      }
+    }
+
+    const blob = await pres.write({ outputType: 'blob' });
+    const url = URL.createObjectURL(blob);
+    if (status) status.innerHTML = `<div style="margin-top:10px;"><a href="${url}" download="Figma_Export.pptx" class="comp-scan-btn" style="background:#4ade80;border-color:#4ade80;color:#111;text-decoration:none;display:inline-block;text-align:center;font-weight:600;">💾 Click to Save PPTX (${frames.length} slides)</a></div>`;
+  } catch (err) {
+    if (status) status.innerHTML = `<div class="audit-loading" style="color:#f87171;">❌ Error: ${err.message}</div>`;
+  }
+}
+
+
+
+function collectAuditIssues(screens) {
+  var issues = { spacing: [], padding: [], alignment: [], radius: [], opacity: [], naming: [] };
+
+  screens.forEach(function(screen) {
+    var sn = screen.name || 'Unnamed';
+    var children = screen.children || [];
+
+    // Padding inconsistency within screen
+    var padValues = children
+      .filter(function(c) { return c.paddingTop != null; })
+      .map(function(c) { return c.paddingTop + '/' + c.paddingBottom + '/' + c.paddingLeft + '/' + c.paddingRight; });
+    var uniquePads = [...new Set(padValues)];
+    if (uniquePads.length > 1) {
+      issues.padding.push({ level: 'warn', screen: sn, msg: 'Inconsistent padding across ' + padValues.length + ' children (' + uniquePads.slice(0, 2).join(' vs ') + ')' });
+    }
+
+    // itemSpacing inconsistency
+    var spacingVals = children
+      .filter(function(c) { return c.itemSpacing != null; })
+      .map(function(c) { return c.itemSpacing; });
+    var uniqueSpacing = [...new Set(spacingVals)];
+    if (uniqueSpacing.length > 1) {
+      issues.spacing.push({ level: 'warn', screen: sn, msg: 'Mixed item spacing: ' + uniqueSpacing.join('px, ') + 'px' });
+    }
+
+    // Width mismatches among siblings with same type
+    var byType = {};
+    children.forEach(function(c) {
+      if (!byType[c.type]) byType[c.type] = [];
+      byType[c.type].push(c);
+    });
+    Object.keys(byType).forEach(function(t) {
+      var group = byType[t];
+      if (group.length < 2) return;
+      var widths = [...new Set(group.map(function(c) { return c.width; }).filter(Boolean))];
+      if (widths.length > 1) {
+        issues.alignment.push({ level: 'warn', screen: sn, msg: t + ' siblings have different widths: ' + widths.join('px, ') + 'px' });
+      }
+    });
+
+    // Corner radius
+    var radii = children
+      .filter(function(c) { return c.cornerRadius != null && c.cornerRadius > 0; })
+      .map(function(c) { return c.cornerRadius; });
+    var uniqueRadii = [...new Set(radii)];
+    if (uniqueRadii.length > 2) {
+      issues.radius.push({ level: 'warn', screen: sn, msg: 'Multiple corner radii: ' + uniqueRadii.join('px, ') + 'px' });
+    }
+
+    // Low opacity nodes
+    children.forEach(function(c) {
+      if (c.opacity != null && c.opacity < 1) {
+        issues.opacity.push({ level: 'warn', screen: sn, msg: (c.name || c.type) + ' has opacity ' + Math.round(c.opacity * 100) + '%' });
+      }
+    });
+
+    // Generic layer names
+    children.forEach(function(c) {
+      var name = (c.name || '').toLowerCase();
+      if (/^(frame|group|rectangle|ellipse|vector|component) \d+$/i.test(c.name || '')) {
+        issues.naming.push({ level: 'error', screen: sn, msg: '"' + c.name + '" has a generic auto-generated name' });
+      }
+    });
+  });
+
+  // Cross-screen consistency (multi-screen only)
+  if (screens.length > 1) {
+    var screenPaddings = screens.map(function(s) { return s.paddingTop; }).filter(function(v) { return v != null; });
+    var uniqueScreenPads = [...new Set(screenPaddings)];
+    if (uniqueScreenPads.length > 1) {
+      issues.padding.push({ level: 'error', screen: 'Cross-screen', msg: 'Frame-level padding differs across screens: ' + uniqueScreenPads.join('px, ') + 'px' });
+    }
+  }
+
+  return issues;
+}
+
+function renderAuditPanel(issues, screenCount) {
+  var msgs = document.getElementById('messages');
+  var panel = document.createElement('div');
+  panel.className = 'audit-panel';
+
+  var hdr = document.createElement('div');
+  hdr.className = 'audit-panel-header';
+  var total = Object.values(issues).reduce(function(s, arr) { return s + arr.length; }, 0);
+  hdr.innerHTML = '<span class="audit-icon">🔍</span>' +
+    '<span class="audit-panel-title">Audit — ' + screenCount + ' screen' + (screenCount > 1 ? 's' : '') + ', ' + total + ' issue' + (total !== 1 ? 's' : '') + '</span>' +
+    '<button class="audit-close" onclick="this.closest(\".audit-panel\").remove()">×</button>';
+  panel.appendChild(hdr);
+
+  var sections = [
+    { key: 'padding',   icon: '⬜', label: 'Padding' },
+    { key: 'spacing',   icon: '↕', label: 'Spacing' },
+    { key: 'alignment', icon: '⇿', label: 'Alignment' },
+    { key: 'radius',    icon: '⬡', label: 'Corner Radius' },
+    { key: 'opacity',   icon: '◑', label: 'Opacity' },
+    { key: 'naming',    icon: '🏷', label: 'Layer Naming' },
+  ];
+
+  sections.forEach(function(sec) {
+    var items = issues[sec.key];
+    if (!items || items.length === 0) return;
+    var section = document.createElement('div');
+    section.className = 'audit-section';
+    var title = document.createElement('div');
+    title.className = 'audit-section-title';
+    title.textContent = sec.icon + '  ' + sec.label;
+    section.appendChild(title);
+    items.forEach(function(item) {
+      var row = document.createElement('div');
+      row.className = 'audit-item ' + (item.level || 'warn');
+      row.innerHTML = '<span class="audit-item-text">' + item.msg + '</span>' +
+        '<span class="audit-item-badge">' + item.screen + '</span>';
+      section.appendChild(row);
+    });
+    panel.appendChild(section);
+  });
+
+  if (total === 0) {
+    var ok = document.createElement('div');
+    ok.className = 'audit-item ok';
+    ok.innerHTML = '<span class="audit-item-text">No issues found. Looks great! ✨</span>';
+    panel.appendChild(ok);
+  }
+
+  msgs.appendChild(panel);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+// ── Quick Edit (Browse & Edit) ────────────────────────────────────────────────
+
+function scanPage() {
+  var panel = document.getElementById('qe-panel');
+  panel.innerHTML = '<div class="qe-empty" style="padding:20px 0;">🔍 Scanning file\u2026</div>';
+  parent.postMessage({ pluginMessage: { type: 'SCAN_PAGE' } }, '*');
+}
+
+function renderQuickEdit(frames) {
+  var panel = document.getElementById('qe-panel');
+  if (!frames || frames.length === 0) {
+    panel.innerHTML = '<div class="qe-empty">No frames found. Open a Figma file with frames and try again.</div>';
+    return;
+  }
+  panel.innerHTML = '';
+  frames.forEach(function(frame) {
+    var hasText = frame.textNodes && frame.textNodes.length > 0;
+    var hasColor = frame.colorNodes && frame.colorNodes.length > 0;
+    if (!hasText && !hasColor) return;
+
+    var card = document.createElement('div');
+    card.className = 'qe-frame';
+    var totalItems = (frame.textNodes || []).length + (frame.colorNodes || []).length;
+
+    var header = document.createElement('div');
+    header.className = 'qe-frame-header';
+    header.innerHTML =
+      '<span class="qe-frame-name">' + escHtml(frame.name) + '</span>' +
+      '<span class="qe-frame-count">' + totalItems + ' items</span>' +
+      '<span class="qe-chevron">\u25b6</span>';
+    header.onclick = function() { card.classList.toggle('open'); };
+    card.appendChild(header);
+
+    var items = document.createElement('div');
+    items.className = 'qe-items';
+
+    // Text nodes
+    if (hasText) {
+      var tLabel = document.createElement('div');
+      tLabel.className = 'qe-section-label';
+      tLabel.textContent = 'Text';
+      items.appendChild(tLabel);
+      frame.textNodes.forEach(function(tn) {
+        var row = document.createElement('div');
+        row.className = 'qe-item';
+        var lbl = document.createElement('div');
+        lbl.className = 'qe-item-label';
+        lbl.title = tn.name;
+        lbl.textContent = tn.name;
+        var inp = document.createElement('input');
+        inp.className = 'qe-item-input';
+        inp.type = 'text';
+        inp.value = tn.characters;
+        inp.placeholder = 'Enter new text\u2026';
+        var btn = document.createElement('button');
+        btn.className = 'qe-apply-btn';
+        btn.textContent = 'Save';
+        btn.onclick = (function(nodeId, inputEl, btnEl) {
+          return function() {
+            var newText = inputEl.value;
+            parent.postMessage({ pluginMessage: { type: 'EXECUTE_ACTIONS', actions: [{ type: 'SET_TEXT', nodeId: nodeId, value: newText }] } }, '*');
+            btnEl.textContent = 'Saved \u2713';
+            btnEl.className = 'qe-apply-btn done';
+            setTimeout(function() { btnEl.textContent = 'Save'; btnEl.className = 'qe-apply-btn'; }, 2000);
+          };
+        })(tn.id, inp, btn);
+        row.appendChild(lbl);
+        row.appendChild(inp);
+        row.appendChild(btn);
+        items.appendChild(row);
+      });
+    }
+
+    // Color nodes
+    if (hasColor) {
+      var cLabel = document.createElement('div');
+      cLabel.className = 'qe-section-label';
+      cLabel.textContent = 'Colors';
+      items.appendChild(cLabel);
+      frame.colorNodes.forEach(function(cn) {
+        var row = document.createElement('div');
+        row.className = 'qe-item';
+        var lbl = document.createElement('div');
+        lbl.className = 'qe-item-label';
+        lbl.title = cn.name;
+        lbl.textContent = cn.name;
+        // Color picker input
+        var picker = document.createElement('input');
+        picker.type = 'color';
+        picker.style.cssText = 'width:28px;height:28px;border:none;border-radius:4px;cursor:pointer;padding:0;background:none;';
+        // Convert 0-1 r/g/b to hex
+        function toH(v) { var s = Math.round(v * 255).toString(16); return s.length < 2 ? '0' + s : s; }
+        picker.value = '#' + toH(cn.r) + toH(cn.g) + toH(cn.b);
+        var hexLbl = document.createElement('span');
+        hexLbl.style.cssText = 'font-size:10px;font-family:"DM Mono",monospace;color:var(--text3);flex:1;';
+        hexLbl.textContent = picker.value;
+        picker.oninput = function() { hexLbl.textContent = picker.value; };
+        var btn = document.createElement('button');
+        btn.className = 'qe-apply-btn';
+        btn.textContent = 'Apply';
+        btn.onclick = (function(nodeId, pickerEl, btnEl) {
+          return function() {
+            var hex = pickerEl.value.replace('#','');
+            var r = parseInt(hex.substr(0,2),16)/255;
+            var g = parseInt(hex.substr(2,2),16)/255;
+            var b = parseInt(hex.substr(4,2),16)/255;
+            parent.postMessage({ pluginMessage: { type: 'EXECUTE_ACTIONS', actions: [{ type: 'SET_FILL_COLOR', nodeId: nodeId, r: r, g: g, b: b, a: 1 }] } }, '*');
+            btnEl.textContent = 'Done \u2713';
+            btnEl.className = 'qe-apply-btn done';
+            setTimeout(function() { btnEl.textContent = 'Apply'; btnEl.className = 'qe-apply-btn'; }, 2000);
+          };
+        })(cn.id, picker, btn);
+        row.appendChild(lbl);
+        row.appendChild(picker);
+        row.appendChild(hexLbl);
+        row.appendChild(btn);
+        items.appendChild(row);
+      });
+    }
+
+    card.appendChild(items);
+    panel.appendChild(card);
+    // Auto-open first frame
+    if (panel.children.length === 1) card.classList.add('open');
+  });
+
+  // Rescan button at bottom
+  var rescan = document.createElement('button');
+  rescan.className = 'qe-scan-btn';
+  rescan.textContent = '\u21ba Rescan';
+  rescan.onclick = scanPage;
+  panel.appendChild(rescan);
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Componentize Tab ──────────────────────────────────────────────────────────
+
+function runComponentAudit() {
+  var panel = document.getElementById('comp-panel');
+  panel.innerHTML = '<div class="comp-empty" style="padding:20px 0;">🔍 Scanning frame structure\u2026</div>';
+  parent.postMessage({ pluginMessage: { type: 'COMPONENT_AUDIT' } }, '*');
+}
+
+function renderComponentAudit(results) {
+  var panel = document.getElementById('comp-panel');
+  panel.innerHTML = '';
+
+  // Handle error payload
+  if (!Array.isArray(results)) {
+    var err = (results && results.error) ? results.error : 'No selection. Select a frame first.';
+    panel.innerHTML = '<div class="comp-empty">' + escHtml(err) +
+      '<button class="comp-scan-btn" onclick="runComponentAudit()">🔍 Try again</button></div>';
+    return;
+  }
+
+  var totalIssues = 0;
+  results.forEach(function(frameResult) {
+    var issues = frameResult.issues || [];
+    totalIssues += issues.length;
+
+    // Frame header
+    var frameHdr = document.createElement('div');
+    frameHdr.style.cssText = 'font-size:10px;font-family:"DM Mono",monospace;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.4px;';
+    frameHdr.textContent = '📐 ' + frameResult.name + (frameResult.width ? ' (' + frameResult.width + '×' + frameResult.height + ')' : '');
+    panel.appendChild(frameHdr);
+
+    if (issues.length === 0) {
+      var ok = document.createElement('div');
+      ok.className = 'comp-issue';
+      ok.style.borderLeft = '3px solid #4ade80';
+      ok.innerHTML = '<div class="comp-issue-title">✅ Looks good!</div><div class="comp-issue-msg">No missing auto-layout or component opportunities found.</div>';
+      panel.appendChild(ok);
+      return;
+    }
+
+    issues.forEach(function(issue) {
+      var card = document.createElement('div');
+      card.className = 'comp-issue ' + (issue.severity || 'warn');
+
+      var typeLabels = {
+        'MISSING_AUTO_LAYOUT': 'Missing Auto-Layout',
+        'RAW_GROUP': 'Raw Group',
+        'REPEATED_ELEMENTS': 'Component Candidate',
+      };
+      var typeLabel = typeLabels[issue.type] || issue.type;
+
+      card.innerHTML =
+        '<div class="comp-issue-title">' + escHtml(typeLabel) + '</div>' +
+        '<div class="comp-issue-msg">' + escHtml(issue.message) + '</div>' +
+        '<div class="comp-issue-row"></div>';
+
+      var row = card.querySelector('.comp-issue-row');
+
+      // Badge
+      var badge = document.createElement('span');
+      badge.className = 'comp-badge ' + (issue.severity || 'warn');
+      badge.textContent = escHtml(issue.nodeName);
+      row.appendChild(badge);
+
+      // Suggestion hint
+      if (issue.suggestion) {
+        var hint = document.createElement('span');
+        hint.style.cssText = 'font-size:9px;color:var(--text3);flex:1;';
+        hint.textContent = issue.suggestion;
+        row.appendChild(hint);
+      }
+
+      // Apply fix button (only for auto-fixable issues)
+      if (issue.fixAction) {
+        var fixBtn = document.createElement('button');
+        fixBtn.className = 'comp-fix-btn';
+        fixBtn.textContent = 'Apply';
+        fixBtn.onclick = (function(action, btn) {
+          return function() {
+            parent.postMessage({ pluginMessage: { type: 'EXECUTE_ACTIONS', actions: [action] } }, '*');
+            btn.textContent = 'Done ✓';
+            btn.className = 'comp-fix-btn done';
+          };
+        })(issue.fixAction, fixBtn);
+        row.appendChild(fixBtn);
+      }
+
+      // Navigate to node button
+      if (issue.nodeId) {
+        var navBtn = document.createElement('button');
+        navBtn.className = 'comp-nav-btn';
+        navBtn.textContent = '→ Select';
+        navBtn.onclick = (function(nodeId) {
+          return function() {
+            parent.postMessage({ pluginMessage: { type: 'EXECUTE_ACTIONS', actions: [{ type: 'NAVIGATE_TO', nodeId: nodeId }] } }, '*');
+          };
+        })(issue.nodeId);
+        row.appendChild(navBtn);
+      }
+
+      panel.appendChild(card);
+    });
+  });
+
+  // Summary + rescan
+  var summary = document.createElement('div');
+  summary.style.cssText = 'font-size:10px;color:var(--text3);text-align:center;padding:8px 0 4px;';
+  summary.textContent = totalIssues + ' issue' + (totalIssues !== 1 ? 's' : '') + ' found across ' + results.length + ' frame' + (results.length !== 1 ? 's' : '');
+  panel.appendChild(summary);
+
+  var rescan = document.createElement('button');
+  rescan.className = 'comp-scan-btn';
+  rescan.textContent = '↺ Rescan';
+  rescan.onclick = runComponentAudit;
+  panel.appendChild(rescan);
+}
+
+</script>
+</body>
+</html>

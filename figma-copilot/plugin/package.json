@@ -1,0 +1,16 @@
+{
+  "name": "figma-copilot-plugin",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "npx esbuild src/main.ts --bundle --outfile=dist/main.js --platform=browser --target=es2017 && node build-ui.js",
+    "watch": "npx esbuild src/main.ts --bundle --outfile=dist/main.js --platform=browser --target=es2017 --watch & node build-ui.js"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.90.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "pptxgenjs": "^4.0.1"
+  }
+}
