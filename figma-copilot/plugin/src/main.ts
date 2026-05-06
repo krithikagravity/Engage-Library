@@ -449,9 +449,14 @@ function applyAutoLayout(node: any, depth = 0, isRow = false) {
         rowFrame.y = group.y;
         rowFrame.resize(group.width, group.height);
         rowFrame.fills = [];
+        rowFrame.clipsContent = false;
         f.appendChild(rowFrame);
         for (const child of [...group.children]) {
+          const oldX = child.x;
+          const oldY = child.y;
           rowFrame.appendChild(child);
+          child.x = oldX - rowFrame.x;
+          child.y = oldY - rowFrame.y;
         }
         group.remove(); // Remove empty group
         rowFrames.push(rowFrame);
