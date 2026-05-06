@@ -394,7 +394,10 @@ function applyAutoLayout(node: any, depth = 0) {
       const overlapArea = overlapX * overlapY;
       if (overlapArea > 0) {
         const smallerArea = Math.min(a.width * a.height, b.width * b.height);
-        if (smallerArea > 0 && overlapArea / smallerArea > 0.20) return;
+        if (smallerArea > 0 && overlapArea / smallerArea > 0.20) {
+          console.log('AutoLayout: Overlapping children detected, skipping', node.name, 'overlapping:', a.name, 'and', b.name);
+          return;
+        }
       }
     }
   }
