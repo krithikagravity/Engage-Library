@@ -166,7 +166,7 @@ function extractTextNodes(frame: FrameNode): any[] {
       const fn = tn.fontName as any;
       nodes.push({
         text: tn.characters,
-        x: bb.x - frameBB.x, y: bb.y - frameBB.y,
+        x: bb.x - (frameBB as Rect).x, y: bb.y - (frameBB as Rect).y,
         width: bb.width, height: bb.height,
         fontSize: typeof tn.fontSize==='number' ? tn.fontSize : 16,
         fontFamily: fn?.family||'Arial',
@@ -350,11 +350,11 @@ figma.ui.onmessage = async (msg) => {
 
 const ICON_THRESHOLD = 32;
 
-function isIcon(node) {
+function isIcon(node: any) {
   if (node.type === 'VECTOR' || node.type === 'BOOLEAN_OPERATION') return true;
   if (node.width <= ICON_THRESHOLD && node.height <= ICON_THRESHOLD) return true;
   if ('children' in node && node.children.length > 0) {
-    const allVector = node.children.every(c =>
+    const allVector = node.children.every((c: any) =>
       ['VECTOR','BOOLEAN_OPERATION','ELLIPSE','RECTANGLE','LINE','STAR','POLYGON'].includes(c.type)
     );
     if (allVector) return true;
@@ -362,7 +362,7 @@ function isIcon(node) {
   return false;
 }
 
-function applyAutoLayout(node, depth = 0) {
+function applyAutoLayout(node: any, depth = 0) {
   if (depth > 30) { console.log('AutoLayout: Depth limit reached'); return; }
   if (!('children' in node)) { console.log('AutoLayout: Node has no children', node.name); return; }
   if (node.type === 'GROUP') { console.log('AutoLayout: Skipping Group node', node.name); return; }
@@ -373,11 +373,11 @@ function applyAutoLayout(node, depth = 0) {
     applyAutoLayout(child, depth + 1);
   }
 
-  const children = [...node.children];
+  const children = [...node.children] as SceneNode[];
   if (children.length < 2) { console.log('AutoLayout: Less than 2 children, skipping', node.name); return; }
 
   // Skip if any child is absolutely positioned way outside
-  const validChildren = children.filter(c => 
+  const validChildren = (children as any[]).filter(c => 
     c.x >= -10 && c.y >= -10 &&
     c.x < node.width + 10 &&
     c.y < node.height + 10
@@ -400,8 +400,8 @@ function applyAutoLayout(node, depth = 0) {
   }
 
   // 2. GRID DETECTION
-  const uniqueY = [];
-  const uniqueX = [];
+  const uniqueY: number[] = [];
+  const uniqueX: number[] = [];
   for (const c of validChildren) {
     if (!uniqueY.some(y => Math.abs(y - c.y) < 5)) uniqueY.push(c.y);
     if (!uniqueX.some(x => Math.abs(x - c.x) < 5)) uniqueX.push(c.x);
@@ -411,14 +411,14 @@ function applyAutoLayout(node, depth = 0) {
     return;
   }
 
-  console.log('AutoLayout: Success! Applying to', node.name, 'Direction:', direction);
-
   // Detect direction
   const yValues = validChildren.map(c => c.y);
   const xValues = validChildren.map(c => c.x);
   const ySpread = Math.max(...yValues) - Math.min(...yValues);
   const xSpread = Math.max(...xValues) - Math.min(...xValues);
   const direction = xSpread > ySpread ? 'HORIZONTAL' : 'VERTICAL';
+
+  console.log('AutoLayout: Success! Applying to', node.name, 'Direction:', direction);
 
   // 3. ALIGNMENT DETECTION
   let counterAxisAlignItems = 'MIN';
@@ -500,7 +500,7 @@ function applyAutoLayout(node, depth = 0) {
     // Restore dimensions after auto layout changes them
     node.resize(w, h);
 
-  } catch (e) {
+  } catch (e: any) {
     console.warn('Skipped:', node.name, e.message);
     try { node.layoutMode = 'NONE'; } catch (err) {}
   }
