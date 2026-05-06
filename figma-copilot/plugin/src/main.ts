@@ -350,11 +350,11 @@ figma.ui.onmessage = async (msg) => {
 
 const ICON_THRESHOLD = 32;
 
-function isIcon(node: any) {
+function isIcon(node) {
   if (node.type === 'VECTOR' || node.type === 'BOOLEAN_OPERATION') return true;
   if (node.width <= ICON_THRESHOLD && node.height <= ICON_THRESHOLD) return true;
   if ('children' in node && node.children.length > 0) {
-    const allVector = node.children.every((c: any) =>
+    const allVector = node.children.every(c =>
       ['VECTOR','BOOLEAN_OPERATION','ELLIPSE','RECTANGLE','LINE','STAR','POLYGON'].includes(c.type)
     );
     if (allVector) return true;
@@ -362,7 +362,7 @@ function isIcon(node: any) {
   return false;
 }
 
-function applyAutoLayout(node: any, depth = 0) {
+function applyAutoLayout(node, depth = 0) {
   if (depth > 30) return;
   if (!('children' in node)) return;
   if (node.type === 'GROUP') return;
@@ -377,7 +377,7 @@ function applyAutoLayout(node: any, depth = 0) {
   if (children.length < 2) return;
 
   // Skip if any child is absolutely positioned way outside
-  const validChildren = children.filter((c: any) => 
+  const validChildren = children.filter(c => 
     c.x >= -10 && c.y >= -10 &&
     c.x < node.width + 10 &&
     c.y < node.height + 10
@@ -400,8 +400,8 @@ function applyAutoLayout(node: any, depth = 0) {
   }
 
   // 2. GRID DETECTION
-  const uniqueY: number[] = [];
-  const uniqueX: number[] = [];
+  const uniqueY = [];
+  const uniqueX = [];
   for (const c of validChildren) {
     if (!uniqueY.some(y => Math.abs(y - c.y) < 5)) uniqueY.push(c.y);
     if (!uniqueX.some(x => Math.abs(x - c.x) < 5)) uniqueX.push(c.x);
@@ -409,8 +409,8 @@ function applyAutoLayout(node: any, depth = 0) {
   if (uniqueY.length >= 2 && uniqueX.length >= 2) return;
 
   // Detect direction
-  const yValues = validChildren.map((c: any) => c.y);
-  const xValues = validChildren.map((c: any) => c.x);
+  const yValues = validChildren.map(c => c.y);
+  const xValues = validChildren.map(c => c.x);
   const ySpread = Math.max(...yValues) - Math.min(...yValues);
   const xSpread = Math.max(...xValues) - Math.min(...xValues);
   const direction = xSpread > ySpread ? 'HORIZONTAL' : 'VERTICAL';
@@ -418,16 +418,16 @@ function applyAutoLayout(node: any, depth = 0) {
   // 3. ALIGNMENT DETECTION
   let counterAxisAlignItems = 'MIN';
   if (direction === 'HORIZONTAL') {
-    const centers = validChildren.map((c: any) => c.y + c.height / 2);
-    const ends = validChildren.map((c: any) => c.y + c.height);
+    const centers = validChildren.map(c => c.y + c.height / 2);
+    const ends = validChildren.map(c => c.y + c.height);
     const varCenters = Math.max(...centers) - Math.min(...centers);
     const varEnds = Math.max(...ends) - Math.min(...ends);
     const varMins = Math.max(...yValues) - Math.min(...yValues);
     if (varCenters < 5 && varCenters < varMins) counterAxisAlignItems = 'CENTER';
     else if (varEnds < 5 && varEnds < varMins) counterAxisAlignItems = 'MAX';
   } else {
-    const centers = validChildren.map((c: any) => c.x + c.width / 2);
-    const ends = validChildren.map((c: any) => c.x + c.width);
+    const centers = validChildren.map(c => c.x + c.width / 2);
+    const ends = validChildren.map(c => c.x + c.width);
     const varCenters = Math.max(...centers) - Math.min(...centers);
     const varEnds = Math.max(...ends) - Math.min(...ends);
     const varMins = Math.max(...xValues) - Math.min(...xValues);
@@ -436,12 +436,12 @@ function applyAutoLayout(node: any, depth = 0) {
   }
 
   // Sort children by position
-  const sorted = [...validChildren].sort((a: any, b: any) =>
+  const sorted = [...validChildren].sort((a, b) =>
     direction === 'HORIZONTAL' ? a.x - b.x : a.y - b.y
   );
 
   // 4. CALCULATE GAPS & UNEVEN GAP HANDLING
-  const gaps: number[] = [];
+  const gaps = [];
   for (let i = 1; i < sorted.length; i++) {
     const prev = sorted[i - 1];
     const curr = sorted[i];
@@ -468,10 +468,10 @@ function applyAutoLayout(node: any, depth = 0) {
   const paddingLeft = Math.max(0, Math.round(Math.min(...xValues)));
   const paddingTop = Math.max(0, Math.round(Math.min(...yValues)));
   const paddingRight = Math.max(0, Math.round(
-    node.width - Math.max(...validChildren.map((c: any) => c.x + c.width))
+    node.width - Math.max(...validChildren.map(c => c.x + c.width))
   ));
   const paddingBottom = Math.max(0, Math.round(
-    node.height - Math.max(...validChildren.map((c: any) => c.y + c.height))
+    node.height - Math.max(...validChildren.map(c => c.y + c.height))
   ));
 
   try {
@@ -495,7 +495,7 @@ function applyAutoLayout(node: any, depth = 0) {
     // Restore dimensions after auto layout changes them
     node.resize(w, h);
 
-  } catch (e: any) {
+  } catch (e) {
     console.warn('Skipped:', node.name, e.message);
     try { node.layoutMode = 'NONE'; } catch (err) {}
   }
