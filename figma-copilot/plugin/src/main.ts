@@ -362,15 +362,18 @@ function isIcon(node: any) {
   return false;
 }
 
-function applyAutoLayout(node: any, depth = 0) {
-  if (depth > 30) return;
+function applyAutoLayout(node: any, depth = 0, isRow = false) {
+  if (depth > 30) {
+    console.log('AutoLayout: Depth limit reached');
+    return;
+  }
   if (!('children' in node)) return;
   if (node.type === 'GROUP') return;
   if (isIcon(node)) return;
 
   // Recurse children first (bottom up)
   for (const child of node.children) {
-    applyAutoLayout(child, depth + 1);
+    applyAutoLayout(child, depth + 1, false);
   }
 
   const children = [...node.children];
@@ -411,10 +414,11 @@ function applyAutoLayout(node: any, depth = 0) {
   const uniqueY: number[] = [];
   const uniqueX: number[] = [];
   for (const c of validChildren) {
-    if (!uniqueY.some(y => Math.abs(y - c.y) < 5)) uniqueY.push(c.y);
-    if (!uniqueX.some(x => Math.abs(x - c.x) < 5)) uniqueX.push(c.x);
+    if (!uniqueY.some(y => Math.abs(y - c.y) < 10)) uniqueY.push(c.y);
+    if (!uniqueX.some(x => Math.abs(x - c.x) < 10)) uniqueX.push(c.x);
   }
-  if (uniqueY.length >= 2 && uniqueX.length >= 2) {
+  
+  if (!isRow && uniqueY.length >= 2 && uniqueX.length >= 2) {
     // It's a grid! Let's slice it perfectly into rows without moving anything.
     const f = node as FrameNode;
     const w = f.width;
@@ -423,7 +427,7 @@ function applyAutoLayout(node: any, depth = 0) {
     // Find rows
     const rows = new Map<number, SceneNode[]>();
     for (const c of validChildren) {
-      const matchY = uniqueY.find(y => Math.abs(y - c.y) < 5);
+      const matchY = uniqueY.find(y => Math.abs(y - c.y) < 10);
       if (matchY !== undefined) {
         if (!rows.has(matchY)) rows.set(matchY, []);
         rows.get(matchY)!.push(c);
@@ -455,7 +459,7 @@ function applyAutoLayout(node: any, depth = 0) {
     
     // Now apply Auto Layout to the newly created rows
     for (const rowFrame of rowFrames) {
-       applyAutoLayout(rowFrame, depth + 1);
+       applyAutoLayout(rowFrame, depth + 1, true); // PASS isRow = true to prevent loop!
     }
     
     // Now make the parent a vertical stack
