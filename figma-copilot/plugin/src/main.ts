@@ -394,19 +394,88 @@ function applyAutoLayout(node: any, depth = 0) {
       const overlapArea = overlapX * overlapY;
       if (overlapArea > 0) {
         const smallerArea = Math.min(a.width * a.height, b.width * b.height);
-        if (smallerArea > 0 && overlapArea / smallerArea > 0.20) return;
+        if (smallerArea > 0 && overlapArea / smallerArea > 0.20) {
+          const smallerNode = (a.width * a.height) < (b.width * b.height) ? a : b;
+          if ('layoutPositioning' in smallerNode) {
+            smallerNode.layoutPositioning = 'ABSOLUTE';
+            // Remove from validChildren so grid detection doesn't use it
+            const idx = validChildren.indexOf(smallerNode);
+            if (idx !== -1) validChildren.splice(idx, 1);
+          }
+        }
       }
     }
   }
 
-  // 2. GRID DETECTION
+  // 2. GRID DETECTION & PERFECT ROW SLICING
   const uniqueY: number[] = [];
   const uniqueX: number[] = [];
   for (const c of validChildren) {
     if (!uniqueY.some(y => Math.abs(y - c.y) < 5)) uniqueY.push(c.y);
     if (!uniqueX.some(x => Math.abs(x - c.x) < 5)) uniqueX.push(c.x);
   }
-  if (uniqueY.length >= 2 && uniqueX.length >= 2) return;
+  if (uniqueY.length >= 2 && uniqueX.length >= 2) {
+    // It's a grid! Let's slice it perfectly into rows without moving anything.
+    const f = node as FrameNode;
+    const w = f.width;
+    const h = f.height;
+    
+    // Find rows
+    const rows = new Map<number, SceneNode[]>();
+    for (const c of validChildren) {
+      const matchY = uniqueY.find(y => Math.abs(y - c.y) < 5);
+      if (matchY !== undefined) {
+        if (!rows.has(matchY)) rows.set(matchY, []);
+        rows.get(matchY)!.push(c);
+      }
+    }
+    
+    const sortedY = Array.from(rows.keys()).sort((a, b) => a - b);
+    const rowFrames: FrameNode[] = [];
+    
+    for (const y of sortedY) {
+      const rowChildren = rows.get(y)!;
+      if (rowChildren.length > 1) {
+        // Use figma.group to perfectly capture the bounding box of the row items
+        const group = figma.group(rowChildren, f);
+        const rowFrame = figma.createFrame();
+        rowFrame.name = 'Row';
+        rowFrame.x = group.x;
+        rowFrame.y = group.y;
+        rowFrame.resize(group.width, group.height);
+        rowFrame.fills = [];
+        f.appendChild(rowFrame);
+        for (const child of [...group.children]) {
+          rowFrame.appendChild(child);
+        }
+        group.remove(); // Remove empty group
+        rowFrames.push(rowFrame);
+      }
+    }
+    
+    // Now apply Auto Layout to the newly created rows
+    for (const rowFrame of rowFrames) {
+       applyAutoLayout(rowFrame, depth + 1);
+    }
+    
+    // Now make the parent a vertical stack
+    try {
+      f.layoutMode = 'VERTICAL';
+      f.primaryAxisSizingMode = 'FIXED';
+      f.counterAxisSizingMode = 'FIXED';
+      
+      const rowGaps: number[] = [];
+      const sortedRows = [...f.children].sort((a: any, b: any) => a.y - b.y);
+      for (let i = 1; i < sortedRows.length; i++) {
+        const gap = sortedRows[i].y - (sortedRows[i-1].y + sortedRows[i-1].height);
+        if (gap >= 0) rowGaps.push(gap);
+      }
+      f.itemSpacing = rowGaps.length > 0 ? Math.round(rowGaps.reduce((a,b)=>a+b,0)/rowGaps.length) : 0;
+      f.resize(w, h);
+    } catch(e) {}
+    
+    return;
+  }
 
   // Detect direction
   const yValues = validChildren.map((c: any) => c.y);
