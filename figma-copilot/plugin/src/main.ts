@@ -304,12 +304,35 @@ figma.ui.onmessage = async (msg) => {
   } else if (msg.type === "APPLY_AUTOLAYOUT") {
     const selection = figma.currentPage.selection;
     if (selection.length === 0) {
-      figma.notify('⚠️ Select a frame first', { error: true });
-    } else {
-      for (const node of selection) {
-        applyAutoLayout(node);
-      }
+      figma.notify('⚠️ Select elements first', { error: true });
+    } else if (selection.length === 1) {
+      applyAutoLayout(selection[0]);
       figma.notify('✅ Auto layout applied!');
+    } else {
+      const parent = selection[0].parent;
+      if (parent) {
+        const group = figma.group(selection, parent);
+        const frame = figma.createFrame();
+        frame.x = group.x;
+        frame.y = group.y;
+        frame.resize(group.width, group.height);
+        frame.name = "Auto Layout Frame";
+        frame.fills = [];
+        frame.clipsContent = false;
+        parent.appendChild(frame);
+        for (const node of selection) {
+          const oldX = node.x;
+          const oldY = node.y;
+          frame.appendChild(node);
+          node.x = oldX - frame.x;
+          node.y = oldY - frame.y;
+        }
+        group.remove();
+        
+        applyAutoLayout(frame);
+        figma.currentPage.selection = [frame];
+        figma.notify('✅ Auto layout applied to selection!');
+      }
     }
   } else if (msg.type === "EXPORT_PPTX") {
     try {
@@ -371,10 +394,8 @@ function applyAutoLayout(node: any, depth = 0, isRow = false) {
   if (node.type === 'GROUP') return;
   if (isIcon(node)) return;
 
-  // Recurse children first (bottom up)
-  for (const child of node.children) {
-    applyAutoLayout(child, depth + 1, false);
-  }
+  // Recursion removed so we don't accidentally scramble text inside vector graphics!
+  // It will only auto-layout the exact target node that we pass in.
 
   const children = [...node.children];
   if (children.length < 2) return;
