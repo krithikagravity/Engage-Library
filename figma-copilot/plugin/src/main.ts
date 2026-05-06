@@ -388,6 +388,7 @@ function applyAutoLayout(node: any, depth = 0, isRow = false) {
   if (validChildren.length < 2) return;
 
   // 1. OVERLAP DETECTION
+  const nodesToMakeAbsolute: SceneNode[] = [];
   for (let i = 0; i < validChildren.length; i++) {
     for (let j = i + 1; j < validChildren.length; j++) {
       const a = validChildren[i];
@@ -399,8 +400,8 @@ function applyAutoLayout(node: any, depth = 0, isRow = false) {
         const smallerArea = Math.min(a.width * a.height, b.width * b.height);
         if (smallerArea > 0 && overlapArea / smallerArea > 0.20) {
           const smallerNode = (a.width * a.height) < (b.width * b.height) ? a : b;
-          if ('layoutPositioning' in smallerNode) {
-            smallerNode.layoutPositioning = 'ABSOLUTE';
+          if ('layoutPositioning' in smallerNode && !nodesToMakeAbsolute.includes(smallerNode)) {
+            nodesToMakeAbsolute.push(smallerNode);
             // Remove from validChildren so grid detection doesn't use it
             const idx = validChildren.indexOf(smallerNode);
             if (idx !== -1) validChildren.splice(idx, 1);
@@ -564,6 +565,13 @@ function applyAutoLayout(node: any, depth = 0, isRow = false) {
     // Keep FIXED sizing to preserve original dimensions
     node.primaryAxisSizingMode = 'FIXED';
     node.counterAxisSizingMode = 'FIXED';
+
+    // Now it's safe to set overlapping elements to absolute
+    for (const child of nodesToMakeAbsolute) {
+      if ('layoutPositioning' in child) {
+        (child as any).layoutPositioning = 'ABSOLUTE';
+      }
+    }
 
     // Restore dimensions after auto layout changes them
     node.resize(w, h);
