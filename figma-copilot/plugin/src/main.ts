@@ -363,10 +363,10 @@ function isIcon(node) {
 }
 
 function applyAutoLayout(node, depth = 0) {
-  if (depth > 30) return;
-  if (!('children' in node)) return;
-  if (node.type === 'GROUP') return;
-  if (isIcon(node)) return;
+  if (depth > 30) { console.log('AutoLayout: Depth limit reached'); return; }
+  if (!('children' in node)) { console.log('AutoLayout: Node has no children', node.name); return; }
+  if (node.type === 'GROUP') { console.log('AutoLayout: Skipping Group node', node.name); return; }
+  if (isIcon(node)) { console.log('AutoLayout: Node identified as Icon', node.name); return; }
 
   // Recurse children first (bottom up)
   for (const child of node.children) {
@@ -374,7 +374,7 @@ function applyAutoLayout(node, depth = 0) {
   }
 
   const children = [...node.children];
-  if (children.length < 2) return;
+  if (children.length < 2) { console.log('AutoLayout: Less than 2 children, skipping', node.name); return; }
 
   // Skip if any child is absolutely positioned way outside
   const validChildren = children.filter(c => 
@@ -382,7 +382,7 @@ function applyAutoLayout(node, depth = 0) {
     c.x < node.width + 10 &&
     c.y < node.height + 10
   );
-  if (validChildren.length < 2) return;
+  if (validChildren.length < 2) { console.log('AutoLayout: Less than 2 valid children (within bounds), skipping', node.name); return; }
 
   // 1. OVERLAP DETECTION
   for (let i = 0; i < validChildren.length; i++) {
@@ -406,7 +406,12 @@ function applyAutoLayout(node, depth = 0) {
     if (!uniqueY.some(y => Math.abs(y - c.y) < 5)) uniqueY.push(c.y);
     if (!uniqueX.some(x => Math.abs(x - c.x) < 5)) uniqueX.push(c.x);
   }
-  if (uniqueY.length >= 2 && uniqueX.length >= 2) return;
+  if (uniqueY.length >= 2 && uniqueX.length >= 2) {
+    console.log('AutoLayout: Grid detected (items on multiple rows/cols), skipping', node.name);
+    return;
+  }
+
+  console.log('AutoLayout: Success! Applying to', node.name, 'Direction:', direction);
 
   // Detect direction
   const yValues = validChildren.map(c => c.y);
