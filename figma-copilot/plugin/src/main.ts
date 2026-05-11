@@ -301,56 +301,176 @@ figma.ui.onmessage = async (msg) => {
     const selection = figma.currentPage.selection;
     const screens = selection.map(n => serializeScreenForAudit(n as SceneNode));
     figma.ui.postMessage({ type: "AUDIT_DATA", payload: screens });
+  } else if (msg.type === "FIX_SPACING") {
+    const selection = figma.currentPage.selection;
+    if (selection.length === 0) {
+      figma.ui.postMessage({ type: 'FIX_SPACING_DONE', payload: { message: '⚠️ Nothing selected. Please select a frame or component first.' } });
+      return;
+    }
+
+    // Snap a value to the nearest multiple of 4 (standard 8pt grid, half-grid = 4)
+    function snap4(v: number): number { return Math.round(v / 4) * 4; }
+
+    const changes: string[] = [];
+    let totalFixed = 0;
+
+    function fixNode(node: SceneNode) {
+      // ── FRAME / AUTO-LAYOUT PADDING & SPACING ─────────────────────────────
+      if ('layoutMode' in node) {
+        const f = node as FrameNode;
+
+        if (f.layoutMode !== 'NONE') {
+          // Frame has auto-layout — fix padding and gap
+          const newPL = snap4(f.paddingLeft);
+          const newPR = snap4(f.paddingRight);
+          const newPT = snap4(f.paddingTop);
+          const newPB = snap4(f.paddingBottom);
+          const newIS = snap4(f.itemSpacing);
+
+          const padChanged =
+            newPL !== f.paddingLeft || newPR !== f.paddingRight ||
+            newPT !== f.paddingTop  || newPB !== f.paddingBottom;
+          const gapChanged = newIS !== f.itemSpacing;
+
+          if (padChanged || gapChanged) {
+            if (padChanged) {
+              f.paddingLeft   = newPL;
+              f.paddingRight  = newPR;
+              f.paddingTop    = newPT;
+              f.paddingBottom = newPB;
+            }
+            if (gapChanged) f.itemSpacing = newIS;
+            totalFixed++;
+            changes.push(
+              `"${f.name}": padding → ${newPT}/${newPR}/${newPB}/${newPL}px, gap → ${newIS}px`
+            );
+          }
+        } else {
+          // Frame has NO auto layout — padding props are invisible without it.
+          // For pure text frames: enable auto-layout + set padding so it's actually visible.
+          const textChildren = [...f.children].filter(c => c.type === 'TEXT');
+          if (textChildren.length >= 1 && f.children.length === textChildren.length) {
+            try {
+              const w = f.width;
+              const h = f.height;
+              // Enable auto layout centered so text stays in place
+              f.layoutMode = 'HORIZONTAL';
+              f.primaryAxisAlignItems = 'CENTER';
+              f.counterAxisAlignItems = 'CENTER';
+              f.primaryAxisSizingMode = 'FIXED';
+              f.counterAxisSizingMode = 'FIXED';
+              // Set 8px padding on all sides (good default for label frames)
+              const pad = 8;
+              f.paddingLeft   = pad;
+              f.paddingRight  = pad;
+              f.paddingTop    = pad;
+              f.paddingBottom = pad;
+              f.itemSpacing   = 0;
+              f.resize(w, h);
+              totalFixed++;
+              changes.push(`"${f.name}": enabled auto layout + 8px padding (text is now centered)`);
+            } catch (e: any) {
+              changes.push(`"${f.name}": could not fix — ${e.message}`);
+            }
+          }
+        }
+      }
+
+      // ── TEXT NODES: line height ───────────────────────────────────────────
+      if (node.type === 'TEXT') {
+        const t = node as TextNode;
+        const fontSize = t.fontSize;
+        if (typeof fontSize === 'number') {
+          const targetLH = Math.round(
+            fontSize <= 13 ? fontSize * 1.6 :
+            fontSize <= 20 ? fontSize * 1.5 :
+            fontSize <= 32 ? fontSize * 1.35 :
+                             fontSize * 1.2
+          );
+          const lh = t.lineHeight as LineHeight;
+          const lhPx = lh.unit === 'PIXELS' ? lh.value
+                     : lh.unit === 'PERCENT' ? (lh.value / 100) * fontSize
+                     : 0;
+          if (lh.unit === 'AUTO' || Math.abs(lhPx - targetLH) > 3) {
+            try {
+              t.lineHeight = { unit: 'PIXELS', value: targetLH };
+              totalFixed++;
+              changes.push(`"${t.name}": line height → ${targetLH}px (was ${lh.unit === 'AUTO' ? 'auto' : Math.round(lhPx) + 'px'})`);
+            } catch (_) {}
+          }
+        }
+      }
+
+      // ── RECURSE ────────────────────────────────────────────────────────────
+      if ('children' in node) {
+        for (const child of (node as ChildrenMixin).children) {
+          fixNode(child as SceneNode);
+        }
+      }
+    }
+
+    for (const node of selection) {
+      fixNode(node);
+    }
+
+    const message = totalFixed === 0
+      ? `ℹ️ Scanned ${selection.length} element(s). Spacing values are already consistent (padding + gaps on 4px grid, line heights normalized).`
+      : `✅ Fixed ${totalFixed} spacing issue${totalFixed > 1 ? 's' : ''}:\n\n${changes.slice(0, 8).join('\n')}${changes.length > 8 ? `\n…and ${changes.length - 8} more` : ''}`;
+
+    figma.notify(totalFixed > 0 ? '✅ Spacing fixed!' : 'ℹ️ Spacing looks good');
+    figma.ui.postMessage({ type: 'FIX_SPACING_DONE', payload: { message } });
   } else if (msg.type === "APPLY_AUTOLAYOUT") {
     const selection = figma.currentPage.selection;
     if (selection.length === 0) {
       figma.notify('⚠️ Select elements first', { error: true });
-    } else if (selection.length === 1) {
-      applyAutoLayout(selection[0]);
+
+    } else if (selection.length === 1 && 'layoutMode' in selection[0]) {
+      // Single frame — apply auto layout exactly like Figma Shift+A
+      applyAutoLayoutNative(selection[0] as FrameNode);
       figma.notify('✅ Auto layout applied!');
+
     } else {
+      // Multiple items (or non-frame single) — wrap in a new auto-layout frame
       try {
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         for (const node of selection) {
-          const box = (node as any).absoluteBoundingBox;
-          if (box) {
-            minX = Math.min(minX, box.x);
-            minY = Math.min(minY, box.y);
-            maxX = Math.max(maxX, box.x + box.width);
-            maxY = Math.max(maxY, box.y + box.height);
+          const b = (node as any).absoluteBoundingBox;
+          if (b) {
+            minX = Math.min(minX, b.x);     minY = Math.min(minY, b.y);
+            maxX = Math.max(maxX, b.x + b.width); maxY = Math.max(maxY, b.y + b.height);
           }
         }
-        
         if (minX === Infinity) {
-          figma.notify('⚠️ Could not determine bounds of selection', { error: true });
+          figma.notify('⚠️ Could not read bounds', { error: true });
           return;
         }
 
+        const parent = selection[0].parent || figma.currentPage;
+        const parentAbsBox = (parent !== figma.currentPage && 'absoluteBoundingBox' in parent)
+          ? (parent as any).absoluteBoundingBox : { x: 0, y: 0 };
+
         const frame = figma.createFrame();
-        frame.x = minX;
-        frame.y = minY;
         frame.resize(maxX - minX, maxY - minY);
-        frame.name = "Auto Layout Frame";
+        frame.name = 'Auto Layout Frame';
         frame.fills = [];
         frame.clipsContent = false;
-        
-        const parent = selection[0].parent || figma.currentPage;
         parent.appendChild(frame);
-        
+        frame.x = minX - parentAbsBox.x;
+        frame.y = minY - parentAbsBox.y;
+
         for (const node of selection) {
-          // Figma automatically preserves absolute position when appending!
-          frame.appendChild(node);
+          frame.appendChild(node); // Figma preserves absolute position automatically
         }
-        
-        applyAutoLayout(frame);
+
+        // Now read actual child positions inside the wrapper and apply native auto layout
+        applyAutoLayoutNative(frame);
         figma.currentPage.selection = [frame];
-        figma.notify('✅ Auto layout applied to selection!');
+        figma.notify('✅ Auto layout applied!');
       } catch (e: any) {
-        console.error("AutoLayout Error:", e);
-        figma.notify(`⚠️ Failed to apply Auto Layout: ${e.message}`, { error: true });
+        console.error('AutoLayout Error:', e);
+        figma.notify(`⚠️ Failed: ${e.message}`, { error: true });
       }
-    }
-  } else if (msg.type === "EXPORT_PPTX") {
+    }  } else if (msg.type === "EXPORT_PPTX") {
     try {
       const selection = figma.currentPage.selection;
       if (selection.length === 0) {
@@ -401,229 +521,126 @@ function isIcon(node: any) {
   return false;
 }
 
-function applyAutoLayout(node: any, depth = 0, isRow = false) {
-  if (depth > 30) {
-    console.log('AutoLayout: Depth limit reached');
-    return;
-  }
-  if (!('children' in node)) return;
-  if (node.type === 'GROUP') return;
-  if (isIcon(node)) return;
+/**
+ * Replicates Figma's native Shift+A behavior on a FrameNode.
+ * Reads current child positions and sets layoutMode / spacing / padding / alignment
+ * so items remain exactly where they are after auto layout is enabled.
+ */
+function applyAutoLayoutNative(frame: FrameNode) {
+  const children = [...frame.children].filter((c: any) => 'x' in c) as SceneNode[];
+  if (children.length === 0) return;
 
-  // Recursion removed so we don't accidentally scramble text inside vector graphics!
-  // It will only auto-layout the exact target node that we pass in.
+  const items = children.map((c: any) => ({
+    node: c, x: c.x as number, y: c.y as number,
+    w: c.width as number, h: c.height as number
+  }));
 
-  const children = [...node.children];
-  if (children.length < 2) return;
-
-  // Skip if any child is absolutely positioned way outside
-  const validChildren = children.filter((c: any) => 
-    c.x >= -10 && c.y >= -10 &&
-    c.x < node.width + 10 &&
-    c.y < node.height + 10
-  );
-  if (validChildren.length < 2) return;
-
-  // 1. OVERLAP DETECTION
-  const nodesToMakeAbsolute: SceneNode[] = [];
-  for (let i = 0; i < validChildren.length; i++) {
-    for (let j = i + 1; j < validChildren.length; j++) {
-      const a = validChildren[i];
-      const b = validChildren[j];
-      const overlapX = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
-      const overlapY = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
-      const overlapArea = overlapX * overlapY;
-      if (overlapArea > 0) {
-        const smallerArea = Math.min(a.width * a.height, b.width * b.height);
-        if (smallerArea > 0 && overlapArea / smallerArea > 0.20) {
-          const smallerNode = (a.width * a.height) < (b.width * b.height) ? a : b;
-          if ('layoutPositioning' in smallerNode && !nodesToMakeAbsolute.includes(smallerNode)) {
-            nodesToMakeAbsolute.push(smallerNode);
-            // Remove from validChildren so grid detection doesn't use it
-            const idx = validChildren.indexOf(smallerNode);
-            if (idx !== -1) validChildren.splice(idx, 1);
-          }
-        }
-      }
-    }
-  }
-
-  // 2. GRID DETECTION & PERFECT ROW SLICING
-  const uniqueY: number[] = [];
-  const uniqueX: number[] = [];
-  for (const c of validChildren) {
-    if (!uniqueY.some(y => Math.abs(y - c.y) < 10)) uniqueY.push(c.y);
-    if (!uniqueX.some(x => Math.abs(x - c.x) < 10)) uniqueX.push(c.x);
-  }
-  
-  if (!isRow && uniqueY.length >= 2 && uniqueX.length >= 2) {
-    // It's a grid! Let's slice it perfectly into rows without moving anything.
-    const f = node as FrameNode;
-    const w = f.width;
-    const h = f.height;
-    
-    // Find rows
-    const rows = new Map<number, SceneNode[]>();
-    for (const c of validChildren) {
-      const matchY = uniqueY.find(y => Math.abs(y - c.y) < 10);
-      if (matchY !== undefined) {
-        if (!rows.has(matchY)) rows.set(matchY, []);
-        rows.get(matchY)!.push(c);
-      }
-    }
-    
-    const sortedY = Array.from(rows.keys()).sort((a, b) => a - b);
-    const rowFrames: FrameNode[] = [];
-    
-    for (const y of sortedY) {
-      const rowChildren = rows.get(y)!;
-      if (rowChildren.length > 1) {
-        // Use figma.group to perfectly capture the bounding box of the row items
-        const group = figma.group(rowChildren, f);
-        const rowFrame = figma.createFrame();
-        rowFrame.name = 'Row';
-        rowFrame.x = group.x;
-        rowFrame.y = group.y;
-        rowFrame.resize(group.width, group.height);
-        rowFrame.fills = [];
-        rowFrame.clipsContent = false;
-        f.appendChild(rowFrame);
-        for (const child of [...group.children]) {
-          const oldX = child.x;
-          const oldY = child.y;
-          rowFrame.appendChild(child);
-          child.x = oldX - rowFrame.x;
-          child.y = oldY - rowFrame.y;
-        }
-        group.remove(); // Remove empty group
-        rowFrames.push(rowFrame);
-      }
-    }
-    
-    // Now apply Auto Layout to the newly created rows
-    for (const rowFrame of rowFrames) {
-       applyAutoLayout(rowFrame, depth + 1, true); // PASS isRow = true to prevent loop!
-    }
-    
-    // Now make the parent a vertical stack
+  if (items.length === 1) {
+    const it = items[0];
     try {
-      f.layoutMode = 'VERTICAL';
-      f.primaryAxisSizingMode = 'FIXED';
-      f.counterAxisSizingMode = 'FIXED';
-      
-      const rowGaps: number[] = [];
-      const sortedRows = [...f.children].sort((a: any, b: any) => a.y - b.y);
-      for (let i = 1; i < sortedRows.length; i++) {
-        const gap = sortedRows[i].y - (sortedRows[i-1].y + sortedRows[i-1].height);
-        if (gap >= 0) rowGaps.push(gap);
-      }
-      f.itemSpacing = rowGaps.length > 0 ? Math.round(rowGaps.reduce((a,b)=>a+b,0)/rowGaps.length) : 0;
-      f.resize(w, h);
-    } catch(e) {}
-    
+      frame.layoutMode = 'HORIZONTAL';
+      frame.paddingLeft   = Math.max(0, Math.round(it.x));
+      frame.paddingTop    = Math.max(0, Math.round(it.y));
+      frame.paddingRight  = Math.max(0, Math.round(frame.width  - it.x - it.w));
+      frame.paddingBottom = Math.max(0, Math.round(frame.height - it.y - it.h));
+      frame.itemSpacing = 0;
+      frame.primaryAxisSizingMode = 'FIXED';
+      frame.counterAxisSizingMode = 'FIXED';
+    } catch (e: any) { console.warn('AutoLayout single child failed:', e.message); }
     return;
   }
 
-  // Detect direction
-  const yValues = validChildren.map((c: any) => c.y);
-  const xValues = validChildren.map((c: any) => c.x);
-  const ySpread = Math.max(...yValues) - Math.min(...yValues);
-  const xSpread = Math.max(...xValues) - Math.min(...xValues);
-  const direction = xSpread > ySpread ? 'HORIZONTAL' : 'VERTICAL';
+  // ── Direction ─────────────────────────────────────────────────────────────
+  // Use the START positions (top-left corners) of items to determine primary axis.
+  // Figma: if x-positions vary more than y-positions → HORIZONTAL.
+  const xs = items.map(i => i.x), ys = items.map(i => i.y);
+  const xSpread = Math.max(...xs) - Math.min(...xs);
+  const ySpread = Math.max(...ys) - Math.min(...ys);
+  const direction: 'HORIZONTAL' | 'VERTICAL' = xSpread >= ySpread ? 'HORIZONTAL' : 'VERTICAL';
 
-  // 3. ALIGNMENT DETECTION
-  let counterAxisAlignItems = 'MIN';
-  if (direction === 'HORIZONTAL') {
-    const centers = validChildren.map((c: any) => c.y + c.height / 2);
-    const ends = validChildren.map((c: any) => c.y + c.height);
-    const varCenters = Math.max(...centers) - Math.min(...centers);
-    const varEnds = Math.max(...ends) - Math.min(...ends);
-    const varMins = Math.max(...yValues) - Math.min(...yValues);
-    if (varCenters < 5 && varCenters < varMins) counterAxisAlignItems = 'CENTER';
-    else if (varEnds < 5 && varEnds < varMins) counterAxisAlignItems = 'MAX';
-  } else {
-    const centers = validChildren.map((c: any) => c.x + c.width / 2);
-    const ends = validChildren.map((c: any) => c.x + c.width);
-    const varCenters = Math.max(...centers) - Math.min(...centers);
-    const varEnds = Math.max(...ends) - Math.min(...ends);
-    const varMins = Math.max(...xValues) - Math.min(...xValues);
-    if (varCenters < 5 && varCenters < varMins) counterAxisAlignItems = 'CENTER';
-    else if (varEnds < 5 && varEnds < varMins) counterAxisAlignItems = 'MAX';
-  }
-
-  // Sort children by position
-  const sorted = [...validChildren].sort((a: any, b: any) =>
+  // ── Sort by primary axis ──────────────────────────────────────────────────
+  const sorted = [...items].sort((a, b) =>
     direction === 'HORIZONTAL' ? a.x - b.x : a.y - b.y
   );
 
-  // 4. CALCULATE GAPS & UNEVEN GAP HANDLING
+  // ── Gaps between adjacent items ───────────────────────────────────────────
   const gaps: number[] = [];
   for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1];
-    const curr = sorted[i];
+    const prev = sorted[i - 1], curr = sorted[i];
     const gap = direction === 'HORIZONTAL'
-      ? curr.x - (prev.x + prev.width)
-      : curr.y - (prev.y + prev.height);
-    if (gap >= 0 && gap < 200) gaps.push(gap);
+      ? curr.x - (prev.x + prev.w)
+      : curr.y - (prev.y + prev.h);
+    if (gap >= -1) gaps.push(Math.max(0, gap)); // allow -1 rounding tolerance
   }
-  
+
+  // ── Spacing mode ──────────────────────────────────────────────────────────
+  // Figma: if all gaps are equal → fixed itemSpacing
+  //        if gaps vary by > 2px → SPACE_BETWEEN
   let primaryAxisAlignItems = 'MIN';
   let itemSpacing = 0;
-  
   if (gaps.length > 0) {
-    const maxGap = Math.max(...gaps);
-    const minGap = Math.min(...gaps);
-    if (maxGap - minGap > 10) {
+    const minG = Math.min(...gaps), maxG = Math.max(...gaps);
+    const avgG = Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length);
+    if (maxG - minG > 2) {
       primaryAxisAlignItems = 'SPACE_BETWEEN';
+      itemSpacing = 0;
     } else {
-      itemSpacing = Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length);
+      itemSpacing = avgG;
     }
   }
 
-  // Calculate padding
-  const paddingLeft = Math.max(0, Math.round(Math.min(...xValues)));
-  const paddingTop = Math.max(0, Math.round(Math.min(...yValues)));
-  const paddingRight = Math.max(0, Math.round(
-    node.width - Math.max(...validChildren.map((c: any) => c.x + c.width))
-  ));
-  const paddingBottom = Math.max(0, Math.round(
-    node.height - Math.max(...validChildren.map((c: any) => c.y + c.height))
-  ));
+  // ── Padding (distance from frame edges to the item group) ─────────────────
+  const paddingLeft   = Math.max(0, Math.round(Math.min(...items.map(i => i.x))));
+  const paddingTop    = Math.max(0, Math.round(Math.min(...items.map(i => i.y))));
+  const paddingRight  = Math.max(0, Math.round(frame.width  - Math.max(...items.map(i => i.x + i.w))));
+  const paddingBottom = Math.max(0, Math.round(frame.height - Math.max(...items.map(i => i.y + i.h))));
 
+  // ── Counter-axis alignment ─────────────────────────────────────────────────
+  // Figma checks whether items are top/center/bottom aligned on the cross axis.
+  let counterAxisAlignItems = 'MIN';
+  if (direction === 'HORIZONTAL') {
+    const centers  = items.map(i => i.y + i.h / 2);
+    const bottoms  = items.map(i => i.y + i.h);
+    const varCtr   = Math.max(...centers) - Math.min(...centers);
+    const varTop   = Math.max(...ys) - Math.min(...ys);
+    const varBot   = Math.max(...bottoms) - Math.min(...bottoms);
+    if      (varCtr <= 2)                          counterAxisAlignItems = 'CENTER';
+    else if (varBot <= 2 && varBot < varTop)       counterAxisAlignItems = 'MAX';
+  } else {
+    const centers  = items.map(i => i.x + i.w / 2);
+    const rights   = items.map(i => i.x + i.w);
+    const varCtr   = Math.max(...centers) - Math.min(...centers);
+    const varLeft  = Math.max(...xs) - Math.min(...xs);
+    const varRight = Math.max(...rights) - Math.min(...rights);
+    if      (varCtr <= 2)                          counterAxisAlignItems = 'CENTER';
+    else if (varRight <= 2 && varRight < varLeft)  counterAxisAlignItems = 'MAX';
+  }
+
+  // ── Apply ─────────────────────────────────────────────────────────────────
   try {
-    // Save dimensions BEFORE applying auto layout
-    const w = node.width;
-    const h = node.height;
-
-    node.layoutMode = direction;
-    node.itemSpacing = itemSpacing;
-    node.primaryAxisAlignItems = primaryAxisAlignItems;
-    node.counterAxisAlignItems = counterAxisAlignItems;
-    node.paddingLeft = paddingLeft;
-    node.paddingTop = paddingTop;
-    node.paddingRight = paddingRight;
-    node.paddingBottom = paddingBottom;
-
-    // Keep FIXED sizing to preserve original dimensions
-    node.primaryAxisSizingMode = 'FIXED';
-    node.counterAxisSizingMode = 'FIXED';
-
-    // Now it's safe to set overlapping elements to absolute
-    for (const child of nodesToMakeAbsolute) {
-      if ('layoutPositioning' in child) {
-        (child as any).layoutPositioning = 'ABSOLUTE';
-      }
-    }
-
-    // Restore dimensions after auto layout changes them
-    node.resize(w, h);
-
+    const w = frame.width, h = frame.height;
+    frame.layoutMode              = direction;
+    frame.itemSpacing             = itemSpacing;
+    frame.primaryAxisAlignItems   = primaryAxisAlignItems as any;
+    frame.counterAxisAlignItems   = counterAxisAlignItems as any;
+    frame.paddingLeft             = paddingLeft;
+    frame.paddingTop              = paddingTop;
+    frame.paddingRight            = paddingRight;
+    frame.paddingBottom           = paddingBottom;
+    frame.primaryAxisSizingMode   = 'FIXED';
+    frame.counterAxisSizingMode   = 'FIXED';
+    frame.resize(w, h); // lock dimensions — items stay put
+    console.log(`AutoLayout: ${direction} spacing=${itemSpacing} pad=${paddingLeft},${paddingTop},${paddingRight},${paddingBottom} ctr=${counterAxisAlignItems} primary=${primaryAxisAlignItems}`);
   } catch (e: any) {
-    console.warn('Skipped:', node.name, e.message);
-    try { node.layoutMode = 'NONE'; } catch (err) {}
+    console.warn('applyAutoLayoutNative failed:', e.message);
+    try { frame.layoutMode = 'NONE'; } catch (_) {}
   }
 }
 
+// Compatibility alias
+function applyAutoLayout(node: any) {
+  if ('layoutMode' in node) applyAutoLayoutNative(node as FrameNode);
+}
 
 interface FCAction {
   type: string;

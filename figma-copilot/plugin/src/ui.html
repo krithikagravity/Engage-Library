@@ -333,6 +333,19 @@ window.onmessage = (event) => {
       updateSendBtn();
       break;
 
+    case 'FIX_SPACING_DONE': {
+      // Replace the "Analyzing..." placeholder with the real result
+      const msgs2 = document.getElementById('messages');
+      const bubbles = msgs2.querySelectorAll('.msg.ai .msg-bubble');
+      const last = bubbles[bubbles.length - 1];
+      if (last && last.textContent.includes('Analyzing spacing')) {
+        last.textContent = msg.payload.message;
+      } else {
+        appendMessage('ai', msg.payload.message);
+      }
+      break;
+    }
+
     case 'FULL_CONTEXT':
       state.fullContext = msg.payload;
       break;
@@ -468,8 +481,20 @@ function handleKey(e) {
 }
 
 function sendSuggestion(el) {
+  const text = el.textContent.trim();
+
+  // "Fix spacing" is handled directly by the plugin — no backend call needed
+  if (text.toLowerCase() === 'fix spacing') {
+    const welcome = document.getElementById('welcome');
+    if (welcome) welcome.remove();
+    appendMessage('user', text);
+    appendMessage('ai', '⏳ Analyzing spacing in selected frame...');
+    parent.postMessage({ pluginMessage: { type: 'FIX_SPACING' } }, '*');
+    return;
+  }
+
   state.history = [];
-  document.getElementById('input').value = el.textContent;
+  document.getElementById('input').value = text;
   sendMessage();
 }
 
